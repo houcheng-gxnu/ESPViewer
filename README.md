@@ -39,6 +39,7 @@ matplotlib  numpy  pillow  PyQt5
 | `ESPViewer_en.py` | 英文增强版 |
 | `dist/ESPViewer_CN.exe` | 中文增强版打包 exe（64.5 MB） |
 | `dist/ESPViewer_EN.exe` | 英文增强版打包 exe（64.5 MB） |
+| exe 下载 | https://cnb.cool/chem311/ESPViewer/-/tree/master/dist |
 
 ## 使用方法
 
