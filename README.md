@@ -37,6 +37,8 @@ matplotlib  numpy  pillow  PyQt5
 | `ESPViewer.py` | 基础版（单面板布局） |
 | `ESPViewer_cn.py` | 中文增强版（Tab 布局 + 极值点表格 + 透明度滑块） |
 | `ESPViewer_en.py` | 英文增强版 |
+| `dist/ESPViewer_CN.exe` | 中文增强版打包 exe（64.5 MB） |
+| `dist/ESPViewer_EN.exe` | 英文增强版打包 exe（64.5 MB） |
 
 ## 使用方法
 
