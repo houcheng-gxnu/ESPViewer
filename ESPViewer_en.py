@@ -2347,7 +2347,16 @@ QPlainTextEdit {
             self.esp_unit = info.get("esp_unit", "kcal/mol")
             vmd_dir = self.edit_vmdir.text() or os.path.dirname(vmd_exe)
 
-            self.vmd_process = launch_vmd(vmd_exe, script, vmd_dir)
+            try:
+                self.vmd_process = launch_vmd(vmd_exe, script, vmd_dir)
+            except Exception as e:
+                self.log(f"✗ Failed to launch VMD: {e}")
+                self.log("Check VMD path in settings and ensure VMD is installed")
+                QMessageBox.critical(self, "VMD Launch Error",
+                    f"Failed to launch VMD:\n{e}\n\n"
+                    "Please verify VMD path in [Settings] tab.")
+                return
+
             self.log("VMD started, waiting for render service...")
 
             def wait_vmd_ready():
@@ -2363,16 +2372,16 @@ QPlainTextEdit {
                     except (ConnectionRefusedError, OSError, socket.timeout):
                         time.sleep(0.5)
                 if ready:
-                    self.log("VMD render service ready. Adjust the view in VMD")
-                    self.log("Then click [📷 Render Current View] to generate image")
-                    self.btn_render_view.setEnabled(True)
+                    self.log_signal.emit("VMD render service ready. Adjust the view in VMD")
+                    self.log_signal.emit("Then click [📷 Render Current View] to generate image")
+                    self._set_render_btn_enabled(True)
                     if mode in ("iso", "all"):
-                        self.opacity_slider.setEnabled(True)
+                        self._set_opacity_enabled(True)
                     if mode in ("ext", "all"):
-                        self.btn_pick.setEnabled(True)
-                        self.log("EXT/ALL mode: click [🔍 Query Extrema] for extrema ESP values")
+                        self._set_pick_enabled(True)
+                        self.log_signal.emit("EXT/ALL mode: click [🔍 Query Extrema] for extrema ESP values")
                 else:
-                    self.log("⚠ VMD render startup timeout, buttons remain disabled")
+                    self.log_signal.emit("⚠ VMD render startup timeout, buttons remain disabled")
 
             threading.Thread(target=wait_vmd_ready, daemon=True).start()
 
@@ -2396,6 +2405,17 @@ QPlainTextEdit {
             QMessageBox.warning(self, "Info", msg)
         else:
             QMessageBox.critical(self, "Error", msg)
+
+    # ── Thread-safe UI helpers (called from worker threads) ──
+    def _set_render_btn_enabled(self, enabled):
+        """Safe to call from any thread (uses QTimer to invoke on main thread)."""
+        QTimer.singleShot(0, lambda: self.btn_render_view.setEnabled(enabled))
+
+    def _set_opacity_enabled(self, enabled):
+        QTimer.singleShot(0, lambda: self.opacity_slider.setEnabled(enabled))
+
+    def _set_pick_enabled(self, enabled):
+        QTimer.singleShot(0, lambda: self.btn_pick.setEnabled(enabled))
 
 
 # ── Main ───────────────────────────────────────────────────

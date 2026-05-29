@@ -2347,7 +2347,16 @@ QPlainTextEdit {
             self.esp_unit = info.get("esp_unit", "kcal/mol")
             vmd_dir = self.edit_vmdir.text() or os.path.dirname(vmd_exe)
 
-            self.vmd_process = launch_vmd(vmd_exe, script, vmd_dir)
+            try:
+                self.vmd_process = launch_vmd(vmd_exe, script, vmd_dir)
+            except Exception as e:
+                self.log(f"✗ VMD 启动失败: {e}")
+                self.log("请检查 [路径设置] 中的 VMD 路径，确认 VMD 已正确安装")
+                QMessageBox.critical(self, "VMD 启动错误",
+                    f"无法启动 VMD:\n{e}\n\n"
+                    "请在 [路径设置] 中确认 VMD 可执行文件路径正确。")
+                return
+
             self.log("VMD 已启动，等待渲染服务就绪...")
 
             def wait_vmd_ready():
@@ -2363,16 +2372,16 @@ QPlainTextEdit {
                     except (ConnectionRefusedError, OSError, socket.timeout):
                         time.sleep(0.5)
                 if ready:
-                    self.log("VMD 渲染服务已就绪，请在 VMD 窗口中调整视角")
-                    self.log("调整好后点击 [📷 渲染当前视角] 按钮出图")
-                    self.btn_render_view.setEnabled(True)
+                    self.log_signal.emit("VMD 渲染服务已就绪，请在 VMD 窗口中调整视角")
+                    self.log_signal.emit("调整好后点击 [📷 渲染当前视角] 按钮出图")
+                    self._set_render_btn_enabled(True)
                     if mode in ("iso", "all"):
-                        self.opacity_slider.setEnabled(True)
+                        self._set_opacity_enabled(True)
                     if mode in ("ext", "all"):
-                        self.btn_pick.setEnabled(True)
-                        self.log("EXT/ALL 模式：点击 [🔍 查询极值点] 可查看极值点 ESP 数值")
+                        self._set_pick_enabled(True)
+                        self.log_signal.emit("EXT/ALL 模式：点击 [🔍 查询极值点] 可查看极值点 ESP 数值")
                 else:
-                    self.log("⚠ VMD 渲染服务启动超时，按钮仍不可用")
+                    self.log_signal.emit("⚠ VMD 渲染服务启动超时，按钮仍不可用")
 
             threading.Thread(target=wait_vmd_ready, daemon=True).start()
 
@@ -2396,6 +2405,16 @@ QPlainTextEdit {
             QMessageBox.warning(self, "提示", msg)
         else:
             QMessageBox.critical(self, "错误", msg)
+
+    # ── 线程安全的 UI 辅助方法（可从子线程调用）──
+    def _set_render_btn_enabled(self, enabled):
+        QTimer.singleShot(0, lambda: self.btn_render_view.setEnabled(enabled))
+
+    def _set_opacity_enabled(self, enabled):
+        QTimer.singleShot(0, lambda: self.opacity_slider.setEnabled(enabled))
+
+    def _set_pick_enabled(self, enabled):
+        QTimer.singleShot(0, lambda: self.btn_pick.setEnabled(enabled))
 
 
 # ── Main ───────────────────────────────────────────────────
