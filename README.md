@@ -80,6 +80,16 @@ pyinstaller ESP_Surface_GUI_CN.spec
 
 配置自动保存到 `esp_surface_gui.ini`。
 
+## 致谢
+
+本软件的核心计算引擎来自 **卢天老师** 开发的 **Multiwfn** 多功能波函数分析程序，特此致以最诚挚的感谢！
+
+> Tian Lu, Feiwu Chen, *Multiwfn: A Multifunctional Wavefunction Analyzer*, J. Comput. Chem., **2012**, 33, 580–592. DOI: [10.1002/jcc.22885](https://doi.org/10.1002/jcc.22885)
+>
+> Tian Lu, *A Comprehensive Electron Wavefunction Analysis Toolbox for Chemists, Multiwfn*, J. Chem. Phys., **2024**, 161, 082503. DOI: [10.1063/5.0216272](https://doi.org/10.1063/5.0216272) (JCP Editors' Choice 2024)
+
+Multiwfn 目前已被超过 4 万篇论文引用，用户遍布全球 90 余国。
+
 ## 许可证
 
 MIT License
