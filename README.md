@@ -39,9 +39,15 @@ matplotlib  numpy  pillow  PyQt5
 | `ESPViewer.py` | 基础版（单面板布局） |
 | `ESPViewer_cn.py` | 中文增强版（Tab 布局 + 极值点表格 + 透明度滑块） |
 | `ESPViewer_en.py` | 英文增强版 |
-| `dist/ESPViewer_CN.exe` | 中文增强版打包 exe（64.5 MB） |
-| `dist/ESPViewer_EN.exe` | 英文增强版打包 exe（64.5 MB） |
-| exe 下载 | https://cnb.cool/chem311/ESPViewer/-/tree/master/dist |
+
+## 下载
+
+📦 **打包好的 exe 请到 Release 页面下载**：[V1.0 Release](https://cnb.cool/chem311/ESPViewer/-/releases/tag/V1.0)
+
+- `ESPViewer_CN.exe` — 中文增强版
+- `ESPViewer_EN.exe` — 英文增强版
+
+无需安装 Python，下载即用。
 
 ## 使用方法
 
