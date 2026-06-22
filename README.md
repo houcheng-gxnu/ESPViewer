@@ -1,5 +1,7 @@
 # ESPViewer
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20791148.svg)](https://doi.org/10.5281/zenodo.20791148)
+
 基于 Multiwfn + VMD 的静电势（ESP）表面可视化工具，PyQt5 GUI 界面。
 
 📺 **视频演示**：[B站 BV1zSVW6PEwe](https://www.bilibili.com/video/BV1zSVW6PEwe/)
@@ -95,6 +97,24 @@ pyinstaller ESP_Surface_GUI_CN.spec
 > Tian Lu, *A Comprehensive Electron Wavefunction Analysis Toolbox for Chemists, Multiwfn*, J. Chem. Phys., **2024**, 161, 082503. DOI: [10.1063/5.0216272](https://doi.org/10.1063/5.0216272) (JCP Editors' Choice 2024)
 
 Multiwfn 目前已被超过 4 万篇论文引用，用户遍布全球 90 余国。
+
+## 📖 引用 / Cite
+
+若您的研究使用了本软件，请按以下格式引用：
+
+> houcheng-gxnu. (2026). *ESPViewer* (Version 1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.20791148
+
+```bibtex
+@software{espviewer_2026,
+  author       = {Hou, Cheng},
+  title        = {ESPViewer},
+  year         = 2026,
+  publisher    = {Zenodo},
+  version      = {1.0.0},
+  doi          = {10.5281/zenodo.20791148},
+  url          = {https://doi.org/10.5281/zenodo.20791148}
+}
+```
 
 ## 许可证
 
