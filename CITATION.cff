@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use ESPViewer in your research, please cite it as below."
+title: "ESPViewer: A PyQt5 GUI for electrostatic potential surface visualization using Multiwfn and VMD"
+authors:
+  - family-names: Hou
+    given-names: Cheng
+    affiliation: "Guangxi Normal University, College of Chemistry and Pharmaceutical Sciences"
+type: software
+version: 1.0.0
+date-released: 2026-06-22
+repository-code: "https://github.com/houcheng-gxnu/ESPViewer"
+keywords:
+  - computational chemistry
+  - electrostatic potential
+  - ESP
+  - Multiwfn
+  - VMD
+  - Tachyon
+  - PyQt5
+license: CC-BY-4.0
+preferred-citation:
+  type: software
+  authors:
+    - family-names: Hou
+      given-names: Cheng
+  title: "ESPViewer"
+  version: 1.0.0
+  year: 2026
+  publisher: Zenodo
+  url: "https://doi.org/10.5281/zenodo.20791148"
+  doi: "10.5281/zenodo.20791148"
