@@ -2022,38 +2022,6 @@ class ESPSurfaceGUI(QMainWindow):
             self.mode_group.addButton(rb, i)
             gl.addWidget(rb, 0, 1 + i)
 
-        # Colorbar toggle (same row as mode)
-        self.colorbar_cb = QCheckBox("显示色彩刻度轴")
-        self.colorbar_cb.setChecked(False)
-        self.colorbar_cb.stateChanged.connect(self._on_colorbar_toggle)
-        gl.addWidget(self.colorbar_cb, 0, 5, 1, 2)
-
-        # Extremum label toggle
-        self._show_labels_cb = QCheckBox("显示极值数值")
-        self._show_labels_cb.setChecked(False)
-        self._show_labels_cb.stateChanged.connect(self._on_show_labels_toggle)
-        gl.addWidget(self._show_labels_cb, 0, 7)
-
-        gl.addWidget(QLabel("字号:"), 0, 8)
-        self._label_size_spin = QDoubleSpinBox()
-        self._label_size_spin.setRange(1.0, 5.0)
-        self._label_size_spin.setSingleStep(0.1)
-        self._label_size_spin.setValue(1.5)
-        self._label_size_spin.setDecimals(1)
-        self._label_size_spin.setMaximumWidth(55)
-        self._label_size_spin.valueChanged.connect(self._on_label_size_changed)
-        gl.addWidget(self._label_size_spin, 0, 9)
-
-        gl.addWidget(QLabel("偏移:"), 0, 10)
-        self._label_offset_spin = QDoubleSpinBox()
-        self._label_offset_spin.setRange(0.2, 3.0)
-        self._label_offset_spin.setSingleStep(0.1)
-        self._label_offset_spin.setValue(0.8)
-        self._label_offset_spin.setDecimals(1)
-        self._label_offset_spin.setMaximumWidth(55)
-        self._label_offset_spin.valueChanged.connect(self._on_label_offset_changed)
-        gl.addWidget(self._label_offset_spin, 0, 11)
-
         # Color scale
         self._lbl_clow = QLabel("色彩下限:")
         gl.addWidget(self._lbl_clow, 1, 0)
@@ -2111,19 +2079,50 @@ class ESPSurfaceGUI(QMainWindow):
         nthreads_hint.setObjectName("HintLabel")
         gl.addWidget(nthreads_hint, 2, 6, 1, 2)
 
+        # Colorbar + extremum label controls
+        self.colorbar_cb = QCheckBox("显示色彩刻度轴")
+        self.colorbar_cb.setChecked(False)
+        self.colorbar_cb.stateChanged.connect(self._on_colorbar_toggle)
+        gl.addWidget(self.colorbar_cb, 3, 1)
+
+        self._show_labels_cb = QCheckBox("显示极值数值")
+        self._show_labels_cb.setChecked(False)
+        self._show_labels_cb.stateChanged.connect(self._on_show_labels_toggle)
+        gl.addWidget(self._show_labels_cb, 3, 2)
+
+        gl.addWidget(QLabel("字号:"), 3, 3)
+        self._label_size_spin = QDoubleSpinBox()
+        self._label_size_spin.setRange(1.0, 5.0)
+        self._label_size_spin.setSingleStep(0.1)
+        self._label_size_spin.setValue(1.5)
+        self._label_size_spin.setDecimals(1)
+        self._label_size_spin.setMaximumWidth(55)
+        self._label_size_spin.valueChanged.connect(self._on_label_size_changed)
+        gl.addWidget(self._label_size_spin, 3, 4)
+
+        gl.addWidget(QLabel("偏移:"), 3, 5)
+        self._label_offset_spin = QDoubleSpinBox()
+        self._label_offset_spin.setRange(0.2, 3.0)
+        self._label_offset_spin.setSingleStep(0.1)
+        self._label_offset_spin.setValue(0.8)
+        self._label_offset_spin.setDecimals(1)
+        self._label_offset_spin.setMaximumWidth(55)
+        self._label_offset_spin.valueChanged.connect(self._on_label_offset_changed)
+        gl.addWidget(self._label_offset_spin, 3, 6)
+
         # Opacity slider
         self._lbl_opacity = QLabel("透明度:")
-        gl.addWidget(self._lbl_opacity, 3, 0)
+        gl.addWidget(self._lbl_opacity, 4, 0)
         self.opacity_slider = QSlider(Qt.Horizontal)
         self.opacity_slider.setRange(5, 100)
         self.opacity_slider.setValue(70)
         self.opacity_slider.setEnabled(False)
         self.opacity_slider.valueChanged.connect(self._on_opacity_slider_changed)
-        gl.addWidget(self.opacity_slider, 3, 1, 1, 3)
+        gl.addWidget(self.opacity_slider, 4, 1, 1, 3)
         self.opacity_value_label = QLabel("0.70")
         self.opacity_value_label.setMinimumWidth(40)
         self.opacity_value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        gl.addWidget(self.opacity_value_label, 3, 4)
+        gl.addWidget(self.opacity_value_label, 4, 4)
 
         # Mode change logic
         self.mode_group.buttonClicked.connect(self._on_mode_change)
