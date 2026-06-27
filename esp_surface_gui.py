@@ -588,14 +588,14 @@ def plot_esp_area_histogram(area_data, output_path,
     cmap_bwr = plt.get_cmap('bwr')
     colors = [cmap_bwr(norm(c)) for c in centers]
 
-    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fig, ax = plt.subplots(figsize=(12, 7))
     bars = ax.bar(
         centers, areas, width=bin_width * 0.92, align='center',
         color=colors, edgecolor='#333333', linewidth=0.8,
     )
     ax.set_xlabel(xlabel, fontsize=12)
     ax.set_ylabel('Surface Area (Å²)', fontsize=12)
-    ax.set_title(title, fontsize=13, fontweight='bold')
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=12)
     ax.set_xticks(centers)
     ax.set_xticklabels([f'{c:.1f}' for c in centers], rotation=45, ha='right', fontsize=8)
 
@@ -634,6 +634,385 @@ def save_area_data_file(area_data, output_path):
     except OSError as e:
         print(f"  Failed to write data file: {e}")
         return None
+
+
+# ── Interactive Area Chart Dialog ──────────────────────────
+
+class AreaChartDialog(QDialog):
+    """Interactive matplotlib chart dialog with editable title/labels."""
+
+    def __init__(self, all_data, parent=None):
+        super().__init__(parent)
+        self.all_data = all_data  # [(fname, [(center,area,pct),...]), ...]
+        self.current_idx = 0
+        self._overlay_mode = False
+        self._chart_type = "bar"  # "bar" or "line"
+        self._canvas = None
+        self._ax = None
+        self._fig = None
+
+        self.setWindowTitle("ESP 分区面积图 — 交互预览")
+        self.setMinimumSize(700, 750)
+        self.setStyleSheet("QDialog { background: #F8FAFC; }")
+
+        layout = QVBoxLayout()
+
+        # ── Top controls ──
+        top = QHBoxLayout()
+
+        top.addWidget(QLabel("标题:"))
+        self.title_edit = QLineEdit("ESP Area Distribution")
+        self.title_edit.setPlaceholderText("图表标题")
+        self.title_edit.textChanged.connect(self._refresh_chart)
+        top.addWidget(self.title_edit, stretch=2)
+
+        top.addWidget(QLabel("X轴:"))
+        self.xlabel_edit = QLineEdit("Electrostatic potential (kcal/mol)")
+        self.xlabel_edit.setPlaceholderText("X轴标签")
+        self.xlabel_edit.textChanged.connect(self._refresh_chart)
+        top.addWidget(self.xlabel_edit, stretch=1)
+
+        top.addWidget(QLabel("Y轴:"))
+        self.ylabel_edit = QLineEdit("Surface Area (Å²)")
+        self.ylabel_edit.setPlaceholderText("Y轴标签")
+        self.ylabel_edit.textChanged.connect(self._refresh_chart)
+        top.addWidget(self.ylabel_edit, stretch=1)
+
+        if len(all_data) > 1:
+            top.addWidget(QLabel("文件:"))
+            self.file_combo = QComboBox()
+            self.file_combo.addItems([d[0] for d in all_data])
+            self.file_combo.currentIndexChanged.connect(self._on_file_changed)
+            top.addWidget(self.file_combo)
+
+            self._overlay_cb = QCheckBox("叠加对比")
+            self._overlay_cb.stateChanged.connect(self._on_overlay_toggled)
+            top.addWidget(self._overlay_cb)
+
+            self._chart_type_combo = QComboBox()
+            self._chart_type_combo.addItems(["柱状图", "折线图"])
+            self._chart_type_combo.setEnabled(False)
+            self._chart_type_combo.currentIndexChanged.connect(self._on_chart_type_changed)
+            top.addWidget(self._chart_type_combo)
+
+        layout.addLayout(top)
+
+        # ── Font/style controls ──
+        ctrl_row = QHBoxLayout()
+        ctrl_row.addWidget(QLabel("坐标字号:"))
+        self.tick_fs_spin = QSpinBox()
+        self.tick_fs_spin.setRange(6, 20)
+        self.tick_fs_spin.setValue(9)
+        self.tick_fs_spin.setMaximumWidth(60)
+        self.tick_fs_spin.valueChanged.connect(self._refresh_chart)
+        ctrl_row.addWidget(self.tick_fs_spin)
+
+        ctrl_row.addWidget(QLabel("数值字号:"))
+        self.bar_fs_spin = QSpinBox()
+        self.bar_fs_spin.setRange(5, 18)
+        self.bar_fs_spin.setValue(7)
+        self.bar_fs_spin.setMaximumWidth(60)
+        self.bar_fs_spin.valueChanged.connect(self._refresh_chart)
+        ctrl_row.addWidget(self.bar_fs_spin)
+
+        self._show_bar_val_cb = QCheckBox("显示数值")
+        self._show_bar_val_cb.setChecked(True)
+        self._show_bar_val_cb.stateChanged.connect(self._refresh_chart)
+        ctrl_row.addWidget(self._show_bar_val_cb)
+
+        ctrl_row.addStretch()
+        layout.addLayout(ctrl_row)
+
+        # ── Matplotlib canvas ──
+        try:
+            from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
+
+            # Paper-style: Arial font, black axes border
+            plt.rcParams['font.family'] = 'Arial'
+            plt.rcParams['axes.edgecolor'] = 'black'
+            plt.rcParams['axes.linewidth'] = 1.2
+            self._fig, self._ax = plt.subplots(figsize=(7, 7))
+            self._canvas = FigureCanvasQTAgg(self._fig)
+            self._canvas.setMinimumHeight(450)
+            layout.addWidget(self._canvas)
+
+            toolbar = NavigationToolbar2QT(self._canvas, self)
+            layout.addWidget(toolbar)
+        except ImportError:
+            layout.addWidget(QLabel("(matplotlib 交互后端不可用)"))
+
+        # ── Bottom buttons ──
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        save_btn = QPushButton("💾 保存图片")
+        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.setStyleSheet(
+            "QPushButton { background: #1E88E5; color: white; font-weight: bold; "
+            "padding: 8px 20px; border-radius: 6px; border: none; }"
+            "QPushButton:hover { background: #1976D2; }"
+        )
+        save_btn.clicked.connect(self._save_chart)
+        btn_row.addWidget(save_btn)
+
+        close_btn = QPushButton("关闭")
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
+
+        layout.addLayout(btn_row)
+        self.setLayout(layout)
+
+        self._refresh_chart()
+
+    def _on_overlay_toggled(self, state):
+        self._overlay_mode = bool(state)
+        self.file_combo.setEnabled(not self._overlay_mode)
+        self._chart_type_combo.setEnabled(self._overlay_mode)
+        self._refresh_chart()
+
+    def _on_chart_type_changed(self, idx):
+        self._chart_type = "bar" if idx == 0 else "line"
+        self._refresh_chart()
+
+    def _on_file_changed(self, idx):
+        self.current_idx = idx
+        self._refresh_chart()
+
+    def _refresh_chart(self):
+        if self._ax is None:
+            return
+        self._ax.clear()
+
+        if self._overlay_mode and len(self.all_data) > 1:
+            if self._chart_type == "line":
+                self._draw_overlay_line()
+            else:
+                self._draw_overlay()
+        else:
+            self._draw_single()
+
+        self._fig.tight_layout()
+        self._canvas.draw_idle()
+
+    def _draw_single(self):
+        _, data = self.all_data[self.current_idx]
+
+        centers = [d[0] for d in data]
+        areas = [d[1] for d in data]
+
+        if len(centers) > 1:
+            bin_width = centers[1] - centers[0]
+        else:
+            bin_width = 2.0
+
+        data_min, data_max = min(centers), max(centers)
+        pad = max(0.5, (data_max - data_min) * 0.05)
+        norm = mcolors.TwoSlopeNorm(vmin=data_min - pad, vcenter=0, vmax=data_max + pad)
+        cmap_bwr = plt.get_cmap('bwr')
+        colors = [cmap_bwr(norm(c)) for c in centers]
+
+        bars = self._ax.bar(
+            centers, areas, width=bin_width * 0.92, align='center',
+            color=colors, edgecolor='#333333', linewidth=0.8,
+        )
+        self._ax.set_xlabel(self.xlabel_edit.text() or "ESP", fontsize=12)
+        self._ax.set_ylabel(self.ylabel_edit.text() or "Area", fontsize=12)
+        self._ax.set_title(self.title_edit.text() or "Area Distribution",
+                           fontsize=14, fontweight='bold', pad=12)
+        self._ax.set_xticks(centers)
+        tick_fs = self.tick_fs_spin.value()
+        self._ax.set_xticklabels([f'{c:.1f}' for c in centers], rotation=45, ha='right', fontsize=tick_fs)
+        self._ax.tick_params(axis='y', labelsize=tick_fs)
+
+        max_area = max(areas) if max(areas) > 0 else 1
+        if self._show_bar_val_cb.isChecked():
+            bar_fs = self.bar_fs_spin.value()
+            for bar, val in zip(bars, areas):
+                if val > 0:
+                    self._ax.text(
+                        bar.get_x() + bar.get_width() / 2.,
+                        bar.get_height() + max_area * 0.02,
+                        f'{val:.1f}', ha='center', va='bottom',
+                        fontsize=bar_fs, rotation=90, color='#333333',
+                    )
+
+        self._ax.spines['top'].set_visible(True)
+        self._ax.spines['right'].set_visible(True)
+        self._ax.set_xlim(centers[0] - bin_width, centers[-1] + bin_width)
+        self._ax.set_ylim(0, max_area * 1.18)
+
+    def _draw_overlay(self):
+        """Grouped bar chart: all molecules overlaid with distinct colors."""
+        # Collect all data and determine common centers
+        all_centers = set()
+        for _, data in self.all_data:
+            for d in data:
+                all_centers.add(round(d[0], 2))
+        centers = sorted(all_centers)
+        n_centers = len(centers)
+
+        if n_centers > 1:
+            bin_width = centers[1] - centers[0]
+        else:
+            bin_width = 2.0
+
+        n_mols = len(self.all_data)
+
+        # Distinct colors per molecule
+        mol_colors = ['#E53935', '#1E88E5', '#43A047', '#FB8C00',
+                       '#8E24AA', '#00ACC1', '#F4511E', '#3949AB']
+        total_width = bin_width * 0.85
+        bar_w = total_width / n_mols
+
+        data_min = min(centers)
+        data_max = max(centers)
+
+        all_bars = []
+        max_val = 0
+
+        for mi, (fname, data) in enumerate(self.all_data):
+            # Build lookup
+            data_map = {}
+            for d in data:
+                data_map[round(d[0], 2)] = d[1]
+
+            areas = [data_map.get(c, 0.0) for c in centers]
+            max_val = max(max_val, max(areas) if areas else 0)
+
+            offset = (mi - (n_mols - 1) / 2) * bar_w
+            pos = [c + offset for c in centers]
+
+            # Short label for legend
+            short_name = os.path.splitext(fname)[0]
+            if len(short_name) > 25:
+                short_name = short_name[:24] + "…"
+
+            bars = self._ax.bar(
+                pos, areas, width=bar_w * 0.92, align='center',
+                color=mol_colors[mi % len(mol_colors)],
+                edgecolor='#222222', linewidth=0.6,
+                label=short_name,
+            )
+            all_bars.append(bars)
+
+        self._ax.set_xlabel(self.xlabel_edit.text() or "ESP", fontsize=12)
+        self._ax.set_ylabel(self.ylabel_edit.text() or "Area", fontsize=12)
+        self._ax.set_title(self.title_edit.text() or "Area Distribution",
+                           fontsize=14, fontweight='bold', pad=12)
+        self._ax.set_xticks(centers)
+        tick_fs = self.tick_fs_spin.value()
+        self._ax.set_xticklabels([f'{c:.1f}' for c in centers], rotation=45, ha='right', fontsize=tick_fs)
+        self._ax.tick_params(axis='y', labelsize=tick_fs)
+
+        if self._show_bar_val_cb.isChecked():
+            bar_fs = self.bar_fs_spin.value()
+            for bars in all_bars:
+                for bar in bars:
+                    val = bar.get_height()
+                    if val > 0:
+                        self._ax.text(
+                            bar.get_x() + bar.get_width() / 2.,
+                            val + max_val * 0.01,
+                            f'{val:.1f}', ha='center', va='bottom',
+                            fontsize=bar_fs, rotation=90, color='#333333',
+                        )
+
+        if max_val > 0:
+            self._ax.set_ylim(0, max_val * 1.22)
+
+        pad = max(0.5, (data_max - data_min) * 0.05)
+        self._ax.set_xlim(centers[0] - bin_width * 0.6, centers[-1] + bin_width * 0.6)
+
+        self._ax.spines['top'].set_visible(True)
+        self._ax.spines['right'].set_visible(True)
+
+        # Legend
+        if n_mols <= 8:
+            self._ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
+
+    def _draw_overlay_line(self):
+        """Line chart overlay: smooth lines for multi-molecule comparison."""
+        all_centers = set()
+        for _, data in self.all_data:
+            for d in data:
+                all_centers.add(round(d[0], 2))
+        centers = sorted(all_centers)
+
+        mol_colors = ['#E53935', '#1E88E5', '#43A047', '#FB8C00',
+                       '#8E24AA', '#00ACC1', '#F4511E', '#3949AB']
+        markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p']
+
+        n_mols = len(self.all_data)
+        max_val = 0
+
+        data_min, data_max = min(centers), max(centers)
+
+        for mi, (fname, data) in enumerate(self.all_data):
+            data_map = {}
+            for d in data:
+                data_map[round(d[0], 2)] = d[1]
+
+            areas = [data_map.get(c, 0.0) for c in centers]
+            max_val = max(max_val, max(areas) if areas else 0)
+
+            short_name = os.path.splitext(fname)[0]
+            if len(short_name) > 25:
+                short_name = short_name[:24] + "…"
+
+            color = mol_colors[mi % len(mol_colors)]
+            marker = markers[mi % len(markers)]
+
+            self._ax.plot(
+                centers, areas, color=color, marker=marker,
+                linewidth=2.2, markersize=7, label=short_name,
+                markeredgecolor='#222222', markeredgewidth=0.5,
+            )
+
+            if self._show_bar_val_cb.isChecked():
+                bar_fs = self.bar_fs_spin.value()
+                for cx, ay in zip(centers, areas):
+                    if ay > 0:
+                        self._ax.annotate(
+                            f'{ay:.1f}', (cx, ay),
+                            textcoords="offset points", xytext=(0, 7),
+                            ha='center', fontsize=bar_fs, color='#333333',
+                        )
+
+        self._ax.set_xlabel(self.xlabel_edit.text() or "ESP", fontsize=12)
+        self._ax.set_ylabel(self.ylabel_edit.text() or "Area", fontsize=12)
+        self._ax.set_title(self.title_edit.text() or "Area Distribution",
+                           fontsize=14, fontweight='bold', pad=12)
+        tick_fs = self.tick_fs_spin.value()
+        self._ax.set_xticks(centers)
+        self._ax.set_xticklabels([f'{c:.1f}' for c in centers], rotation=45, ha='right', fontsize=tick_fs)
+        self._ax.tick_params(axis='y', labelsize=tick_fs)
+
+        pad = max(0.5, (data_max - data_min) * 0.05)
+        self._ax.set_xlim(data_min - pad, data_max + pad)
+
+        if max_val > 0:
+            self._ax.set_ylim(0, max_val * 1.18)
+
+        self._ax.spines['top'].set_visible(True)
+        self._ax.spines['right'].set_visible(True)
+
+        if n_mols <= 8:
+            self._ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
+
+    def _save_chart(self):
+        fname = self.all_data[self.current_idx][0]
+        default_name = os.path.splitext(fname)[0] + "_esp_area.png"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "保存面积图", default_name,
+            "PNG (*.png);;JPG (*.jpg);;PDF (*.pdf)"
+        )
+        if path:
+            try:
+                self._fig.savefig(path, dpi=150, bbox_inches='tight', facecolor='white')
+                QMessageBox.information(self, "完成", f"已保存:\n{path}")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"保存失败:\n{e}")
 
 
 # ── VMD Socket / Launch / Render ───────────────────────────
@@ -676,6 +1055,69 @@ def socket_tcl_snippet(port, callback_port=0):
             f'puts "ESP_VMD_CALLBACK:{callback_port}"\n'
         )
 
+    label_proc = (
+        "\n# === One-click extremum label display ===\n"
+        "proc show_extrema_labels {{size 1.2} {offset 0.8}} {\n"
+        "    # Find surfanalysis.pdb molecule\n"
+        "    set molid -1\n"
+        "    foreach m [molinfo list] {\n"
+        "        if {[molinfo $m get name] eq {surfanalysis.pdb}} {\n"
+        "            set molid $m\n"
+        "            break\n"
+        "        }\n"
+        "    }\n"
+        "    if {$molid < 0} {\n"
+        "        puts {ERROR: surfanalysis.pdb not found}\n"
+        "        return\n"
+        "    }\n"
+        "    # Clear previous labels\n"
+        "    draw delete all\n"
+        "    set sel [atomselect $molid all]\n"
+        "    set coords [$sel get {x y z}]\n"
+        "    set names  [$sel get name]\n"
+        "    set betas  [$sel get beta]\n"
+        "    # Compute centroid of extremum points\n"
+        "    set cx 0; set cy 0; set cz 0\n"
+        "    set n [llength $coords]\n"
+        "    foreach xyz $coords {\n"
+        "        set cx [expr {$cx + [lindex $xyz 0]}]\n"
+        "        set cy [expr {$cy + [lindex $xyz 1]}]\n"
+        "        set cz [expr {$cz + [lindex $xyz 2]}]\n"
+        "    }\n"
+        "    set cx [expr {$cx / $n}]\n"
+        "    set cy [expr {$cy / $n}]\n"
+        "    set cz [expr {$cz / $n}]\n"
+        "    $sel delete\n"
+        "    # Draw labels — offset radially outward from centroid\n"
+        "    foreach xyz $coords nm $names bt $betas {\n"
+        "        set dx [expr {[lindex $xyz 0] - $cx}]\n"
+        "        set dy [expr {[lindex $xyz 1] - $cy}]\n"
+        "        set dz [expr {[lindex $xyz 2] - $cz}]\n"
+        "        set norm [expr {sqrt($dx*$dx + $dy*$dy + $dz*$dz)}]\n"
+        "        if {$norm > 0.001} {\n"
+        "            set x [expr {[lindex $xyz 0] + $dx/$norm * $offset}]\n"
+        "            set y [expr {[lindex $xyz 1] + $dy/$norm * $offset}]\n"
+        "            set z [expr {[lindex $xyz 2] + $dz/$norm * $offset}]\n"
+        "        } else {\n"
+        "            set x [expr {[lindex $xyz 0] + $offset}]\n"
+        "            set y [lindex $xyz 1]\n"
+        "            set z [lindex $xyz 2]\n"
+        "        }\n"
+        "        if {$nm eq {C}} {\n"
+        "            draw color red\n"
+        "        } else {\n"
+        "            draw color blue\n"
+        "        }\n"
+        "        draw text [list $x $y $z] [format {%.2f} $bt] size $size thickness 2\n"
+        "    }\n"
+        "    puts {Done.}\n"
+        "}\n"
+        "proc clear_extrema_labels {{}} {\n"
+        "    draw delete all\n"
+        "    puts {Labels cleared}\n"
+        "}\n"
+    )
+
     return f"""
 # === Socket server: accept commands from Python GUI ===
 set _esp_server_sock [socket -server _esp_accept -myaddr 127.0.0.1 {port}]
@@ -695,7 +1137,7 @@ proc _esp_handle {{chan}} {{
     flush $chan
 }}
 puts "ESP_VMD_SERVER:{port}"
-{pick_code}"""
+{pick_code}{label_proc}"""
 
 
 def send_vmd_cmd(port, cmd, timeout=5):
@@ -728,7 +1170,7 @@ def send_vmd_cmd(port, cmd, timeout=5):
 
 
 def render_current_view_tachyon(port, vmd_dir, tachyon_exe, output_path,
-                                 resolution=(2000, 1500)):
+                                 resolution=(2000, 1500), nthreads=14):
     """Connect to VMD, render current view via Tachyon, then convert to image."""
     for fn in ["vmdscene.dat", "_esp_render.bmp"]:
         fp = os.path.join(vmd_dir, fn)
@@ -754,7 +1196,7 @@ def render_current_view_tachyon(port, vmd_dir, tachyon_exe, output_path,
         tachyon_exe, "vmdscene.dat",
         "-format", "BMP", "-o", bmp_name,
         "-res", str(resolution[0]), str(resolution[1]),
-        "-numthreads", "4", "-aasamples", "24",
+        "-numthreads", str(nthreads), "-aasamples", "24",
         "-fullshade",
     ]
     try:
@@ -900,8 +1342,12 @@ class MultiwfnWorker(QThread):
         output_path = params.get('output_path', None)
         work_dir = params['work_dir']
         callback_port = params.get('callback_port', 0)
+        nthreads = params.get('nthreads', 14)
 
         self.busy_signal.emit(True)
+
+        # Write Multiwfn settings.ini with nthreads
+        self._apply_multiwfn_nthreads(multiwfn_exe, nthreads)
 
         # Clean old files
         self._clean_vmd_dir(vmd_dir)
@@ -1140,6 +1586,26 @@ quit
             self.finished_signal.emit(result)
 
     @staticmethod
+    def _apply_multiwfn_nthreads(multiwfn_exe, nthreads):
+        """Write nthreads= setting to Multiwfn's settings.ini."""
+        settings_path = os.path.join(os.path.dirname(multiwfn_exe), "settings.ini")
+        if not os.path.isfile(settings_path):
+            return
+        try:
+            with open(settings_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            new_lines = []
+            for line in lines:
+                if line.strip().startswith("nthreads"):
+                    new_lines.append(f"nthreads=  {nthreads}\n")
+                else:
+                    new_lines.append(line)
+            with open(settings_path, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+        except Exception:
+            pass
+
+    @staticmethod
     def _clean_vmd_dir(vmd_dir):
         """Clean up old visualization files in VMD directory."""
         if not os.path.isdir(vmd_dir):
@@ -1178,6 +1644,7 @@ class AreaAnalysisWorker(QThread):
     status_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool)
     busy_signal = pyqtSignal(bool)
+    data_signal = pyqtSignal(list)  # emits [(fname, data_list), ...]
 
     def __init__(self, params):
         super().__init__()
@@ -1253,30 +1720,16 @@ class AreaAnalysisWorker(QThread):
             self.finished_signal.emit(False)
             return
 
+        # Save data files and emit data for interactive plotting
         out_dir = os.path.dirname(input_files[0])
         for fname, data in all_data:
             base = os.path.splitext(fname)[0]
-            chart_path = os.path.join(out_dir, f"{base}_esp_area.png")
-            self.log_signal.emit(f"\n生成柱形图: {os.path.basename(chart_path)}")
-            result_path = plot_esp_area_histogram(
-                data, chart_path,
-                title=f"ESP Area Distribution - {fname}",
-                xlabel="ESP (kcal/mol)",
-            )
-            if result_path:
-                self.log_signal.emit(f"✓ 图表已保存: {result_path}")
-                try:
-                    os.startfile(result_path)
-                except Exception:
-                    pass
-            else:
-                self.log_signal.emit("✗ 图表生成失败")
-
             data_path = os.path.join(out_dir, f"{base}_esp_area_data.txt")
             saved = save_area_data_file(data, data_path)
             if saved:
                 self.log_signal.emit(f"✓ 数据文件已保存: {saved}")
 
+        self.data_signal.emit(all_data)
         self.progress_signal.emit(100)
         self.status_signal.emit("✓ ESP 分区面积图完成")
         self.busy_signal.emit(False)
@@ -1305,23 +1758,23 @@ TR = {
     "mode": {"zh": "模式:", "en": "Mode:"},
     "color_low": {"zh": "色彩下限:", "en": "Low:"},
     "color_high": {"zh": "色彩上限:", "en": "High:"},
-    "hint_unit": {"zh": "(PT模式单位kcal/mol, ISO模式单位a.u.)", "en": "(PT: kcal/mol, ISO: a.u.)"},
+    "hint_unit": {"zh": "(单位: kcal/mol)", "en": "(Unit: kcal/mol)"},
     "pt_size": {"zh": "点大小(PT):", "en": "Point Size:"},
     "resolution": {"zh": "渲染分辨率:", "en": "Resolution:"},
-    "output": {"zh": "输出路径:", "en": "Output:"},
     "opacity": {"zh": "透明度:", "en": "Opacity:"},
-    "colorbar": {"zh": "显示色彩刻度轴 (Color Scale Bar)", "en": "Show Color Scale Bar"},
-    "pt_mode": {"zh": "PT (顶点着色)", "en": "PT (Vertex Color)"},
-    "iso_mode": {"zh": "ISO (等值面着色)", "en": "ISO (Isosurface)"},
-    "ext_mode": {"zh": "EXT (极值点)", "en": "EXT (Extrema)"},
-    "all_mode": {"zh": "ALL (全部叠加)", "en": "ALL (Overlay)"},
+    "colorbar": {"zh": "显示色彩刻度轴", "en": "Show Color Scale Bar"},
+    "show_labels": {"zh": "显示极值数值", "en": "Show ESP Values"},
+    "nthreads": {"zh": "并行线程:", "en": "Threads:"},
+    "pt_mode": {"zh": "PT 顶点着色", "en": "PT (Vertex Color)"},
+    "iso_mode": {"zh": "ISO 等值面着色", "en": "ISO (Isosurface)"},
+    "ext_mode": {"zh": "EXT 极值点", "en": "EXT (Extrema)"},
+    "all_mode": {"zh": "ALL 全部叠加", "en": "ALL (Overlay)"},
     "btn_preview": {"zh": "▶ VMD 预览", "en": "▶ VMD Preview"},
     "btn_render_view": {"zh": "📷 渲染当前视角", "en": "📷 Render View"},
     "btn_pick": {"zh": "🔍 查询极值点", "en": "🔍 Query Extrema"},
     "btn_render": {"zh": "▼ 渲染输出", "en": "▼ Render Output"},
     "btn_area": {"zh": "📊 ESP分区面积图", "en": "📊 ESP Area Chart"},
     "btn_stop": {"zh": "■ 停止", "en": "■ Stop"},
-    "output_ph": {"zh": "渲染输出文件路径 (.tga/.png)", "en": "Output path (.tga/.png)"},
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1356,7 +1809,8 @@ class ESPSurfaceGUI(QMainWindow):
         self._log(f"工作目录: {self.work_dir}")
 
         self.setWindowTitle("ESP Surface Visualization v2.0")
-        self.setMinimumSize(950, 1100)
+        self.setMinimumSize(950, 600)
+        self.resize(950, 1100)
 
     def closeEvent(self, event):
         self._close_persist_sock()
@@ -1494,31 +1948,16 @@ class ESPSurfaceGUI(QMainWindow):
         btn_row = QHBoxLayout()
         self._btn_add = QPushButton("添加文件")
         self._btn_add.setCursor(Qt.PointingHandCursor)
-        self._btn_add.setStyleSheet(
-            "QPushButton { background: #1E88E5; color: white; font-weight: bold; "
-            "padding: 6px 16px; border-radius: 6px; border: none; }"
-            "QPushButton:hover { background: #1976D2; }"
-        )
         self._btn_add.clicked.connect(self._add_files)
         btn_row.addWidget(self._btn_add)
 
         self._btn_adddir = QPushButton("添加目录")
         self._btn_adddir.setCursor(Qt.PointingHandCursor)
-        self._btn_adddir.setStyleSheet(
-            "QPushButton { background: #1E88E5; color: white; font-weight: bold; "
-            "padding: 6px 16px; border-radius: 6px; border: none; }"
-            "QPushButton:hover { background: #1976D2; }"
-        )
         self._btn_adddir.clicked.connect(self._add_dir)
         btn_row.addWidget(self._btn_adddir)
 
         self._btn_clear_files = QPushButton("清空列表")
         self._btn_clear_files.setCursor(Qt.PointingHandCursor)
-        self._btn_clear_files.setStyleSheet(
-            "QPushButton { background: #E53935; color: white; font-weight: bold; "
-            "padding: 6px 16px; border-radius: 6px; border: none; }"
-            "QPushButton:hover { background: #D32F2F; }"
-        )
         self._btn_clear_files.clicked.connect(self._clear_files)
         btn_row.addWidget(self._btn_clear_files)
 
@@ -1562,14 +2001,15 @@ class ESPSurfaceGUI(QMainWindow):
         gl.addWidget(self._lbl_mode, 0, 0)
         self.mode_group = QButtonGroup(self)
         modes = [
-            ("PT (顶点着色)", "pt"),
-            ("ISO (等值面着色)", "iso"),
-            ("EXT (极值点)", "ext"),
-            ("ALL (全部叠加)", "all"),
+            ("PT 顶点着色", "pt"),
+            ("ISO 等值面着色", "iso"),
+            ("EXT 极值点", "ext"),
+            ("ALL 全部叠加", "all"),
         ]
         self._rb_pt = self._rb_iso = self._rb_ext = self._rb_all = None
         for i, (txt, val) in enumerate(modes):
             rb = QRadioButton(txt)
+            rb.setStyleSheet("QRadioButton::indicator { border-radius: 7px; }")
             if i == 0:
                 rb.setChecked(True)
                 self._rb_pt = rb
@@ -1581,6 +2021,38 @@ class ESPSurfaceGUI(QMainWindow):
                 self._rb_all = rb
             self.mode_group.addButton(rb, i)
             gl.addWidget(rb, 0, 1 + i)
+
+        # Colorbar toggle (same row as mode)
+        self.colorbar_cb = QCheckBox("显示色彩刻度轴")
+        self.colorbar_cb.setChecked(False)
+        self.colorbar_cb.stateChanged.connect(self._on_colorbar_toggle)
+        gl.addWidget(self.colorbar_cb, 0, 5, 1, 2)
+
+        # Extremum label toggle
+        self._show_labels_cb = QCheckBox("显示极值数值")
+        self._show_labels_cb.setChecked(False)
+        self._show_labels_cb.stateChanged.connect(self._on_show_labels_toggle)
+        gl.addWidget(self._show_labels_cb, 0, 7)
+
+        gl.addWidget(QLabel("字号:"), 0, 8)
+        self._label_size_spin = QDoubleSpinBox()
+        self._label_size_spin.setRange(1.0, 5.0)
+        self._label_size_spin.setSingleStep(0.1)
+        self._label_size_spin.setValue(1.5)
+        self._label_size_spin.setDecimals(1)
+        self._label_size_spin.setMaximumWidth(55)
+        self._label_size_spin.valueChanged.connect(self._on_label_size_changed)
+        gl.addWidget(self._label_size_spin, 0, 9)
+
+        gl.addWidget(QLabel("偏移:"), 0, 10)
+        self._label_offset_spin = QDoubleSpinBox()
+        self._label_offset_spin.setRange(0.2, 3.0)
+        self._label_offset_spin.setSingleStep(0.1)
+        self._label_offset_spin.setValue(0.8)
+        self._label_offset_spin.setDecimals(1)
+        self._label_offset_spin.setMaximumWidth(55)
+        self._label_offset_spin.valueChanged.connect(self._on_label_offset_changed)
+        gl.addWidget(self._label_offset_spin, 0, 11)
 
         # Color scale
         self._lbl_clow = QLabel("色彩下限:")
@@ -1595,7 +2067,7 @@ class ESPSurfaceGUI(QMainWindow):
         self.chigh_edit.setMaximumWidth(80)
         gl.addWidget(self.chigh_edit, 1, 3)
 
-        self._hint_lbl = QLabel("(PT模式单位kcal/mol, ISO模式单位a.u.)")
+        self._hint_lbl = QLabel("(单位: kcal/mol)")
         self._hint_lbl.setObjectName("HintLabel")
         gl.addWidget(self._hint_lbl, 1, 4, 1, 2)
 
@@ -1612,14 +2084,13 @@ class ESPSurfaceGUI(QMainWindow):
         self._btn_detect_range.clicked.connect(self._action_detect_range)
         gl.addWidget(self._btn_detect_range, 1, 6, 1, 2)
 
-        # Point size
+        # Point size + Resolution + Thread count (same row)
         self._lbl_ptsize = QLabel("点大小(PT):")
         gl.addWidget(self._lbl_ptsize, 2, 0)
         self.ptsize_edit = QLineEdit("2.0")
         self.ptsize_edit.setMaximumWidth(80)
         gl.addWidget(self.ptsize_edit, 2, 1)
 
-        # Resolution
         self._lbl_res = QLabel("渲染分辨率:")
         gl.addWidget(self._lbl_res, 2, 2)
         self.res_combo = QComboBox()
@@ -1628,36 +2099,31 @@ class ESPSurfaceGUI(QMainWindow):
         self.res_combo.setMaximumWidth(150)
         gl.addWidget(self.res_combo, 2, 3)
 
-        # Output
-        self._lbl_output = QLabel("输出路径:")
-        gl.addWidget(self._lbl_output, 3, 0)
-        self.output_edit = QLineEdit("")
-        self.output_edit.setPlaceholderText("渲染输出文件路径 (.tga/.png)")
-        gl.addWidget(self.output_edit, 3, 1, 1, 3)
-        btn_output = QPushButton("浏览")
-        btn_output.setCursor(Qt.PointingHandCursor)
-        btn_output.clicked.connect(self._browse_output)
-        gl.addWidget(btn_output, 3, 4)
+        self._lbl_nthreads = QLabel("并行线程:")
+        gl.addWidget(self._lbl_nthreads, 2, 4)
+        self.nthreads_spin = QSpinBox()
+        self.nthreads_spin.setRange(1, 64)
+        self.nthreads_spin.setValue(14)
+        self.nthreads_spin.setMaximumWidth(80)
+        self._lbl_nthreads.setBuddy(self.nthreads_spin)
+        gl.addWidget(self.nthreads_spin, 2, 5)
+        nthreads_hint = QLabel("按自己电脑情况设置")
+        nthreads_hint.setObjectName("HintLabel")
+        gl.addWidget(nthreads_hint, 2, 6, 1, 2)
 
         # Opacity slider
         self._lbl_opacity = QLabel("透明度:")
-        gl.addWidget(self._lbl_opacity, 4, 0)
+        gl.addWidget(self._lbl_opacity, 3, 0)
         self.opacity_slider = QSlider(Qt.Horizontal)
         self.opacity_slider.setRange(5, 100)
         self.opacity_slider.setValue(70)
         self.opacity_slider.setEnabled(False)
         self.opacity_slider.valueChanged.connect(self._on_opacity_slider_changed)
-        gl.addWidget(self.opacity_slider, 4, 1, 1, 3)
+        gl.addWidget(self.opacity_slider, 3, 1, 1, 3)
         self.opacity_value_label = QLabel("0.70")
         self.opacity_value_label.setMinimumWidth(40)
         self.opacity_value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        gl.addWidget(self.opacity_value_label, 4, 4)
-
-        # Colorbar toggle
-        self.colorbar_cb = QCheckBox("显示色彩刻度轴 (Color Scale Bar)")
-        self.colorbar_cb.setChecked(False)
-        self.colorbar_cb.stateChanged.connect(self._on_colorbar_toggle)
-        gl.addWidget(self.colorbar_cb, 5, 1, 1, 3)
+        gl.addWidget(self.opacity_value_label, 3, 4)
 
         # Mode change logic
         self.mode_group.buttonClicked.connect(self._on_mode_change)
@@ -1829,9 +2295,10 @@ class ESPSurfaceGUI(QMainWindow):
         self._hint_lbl.setText(self._tr("hint_unit"))
         self._lbl_ptsize.setText(self._tr("pt_size"))
         self._lbl_res.setText(self._tr("resolution"))
-        self._lbl_output.setText(self._tr("output"))
         self._lbl_opacity.setText(self._tr("opacity"))
+        self._lbl_nthreads.setText(self._tr("nthreads"))
         self.colorbar_cb.setText(self._tr("colorbar"))
+        self._show_labels_cb.setText(self._tr("show_labels"))
         self._rb_pt.setText(self._tr("pt_mode"))
         self._rb_iso.setText(self._tr("iso_mode"))
         self._rb_ext.setText(self._tr("ext_mode"))
@@ -1842,7 +2309,6 @@ class ESPSurfaceGUI(QMainWindow):
         self.btn_render_out.setText(self._tr("btn_render"))
         self.btn_area_chart.setText(self._tr("btn_area"))
         self.btn_stop.setText(self._tr("btn_stop"))
-        self.output_edit.setPlaceholderText(self._tr("output_ph"))
 
     def _browse_exe(self, edit, name):
         p, _ = QFileDialog.getOpenFileName(self, f"选择 {name}", "", "EXE (*.exe);;All (*)")
@@ -1853,11 +2319,6 @@ class ESPSurfaceGUI(QMainWindow):
         d = QFileDialog.getExistingDirectory(self, title)
         if d:
             edit.setText(d)
-
-    def _browse_output(self):
-        p, _ = QFileDialog.getSaveFileName(self, "保存渲染输出", "", "TGA (*.tga);;PNG (*.png);;BMP (*.bmp)")
-        if p:
-            self.output_edit.setText(p)
 
     def _save_paths(self):
         save_config(
@@ -1944,7 +2405,7 @@ class ESPSurfaceGUI(QMainWindow):
             return False
         return True
 
-    def _get_params(self, action):
+    def _get_params(self, action, output_path=None):
         mode = self._get_mode()
         vmd_dir = self.vmdir_edit.text() or os.path.dirname(self.vmd_edit.text())
         return {
@@ -1958,9 +2419,10 @@ class ESPSurfaceGUI(QMainWindow):
             'color_high': float(self.chigh_edit.text()),
             'pt_size': float(self.ptsize_edit.text()),
             'show_colorbar': self.colorbar_cb.isChecked(),
-            'output_path': self.output_edit.text() or None,
+            'output_path': output_path or None,
             'work_dir': self.work_dir,
             'callback_port': self.callback_port or 0,
+            'nthreads': self.nthreads_spin.value(),
         }
 
     # ══ Actions ══
@@ -1976,13 +2438,16 @@ class ESPSurfaceGUI(QMainWindow):
     def _action_render(self):
         if not self._validate_inputs():
             return
-        if not self.output_edit.text():
-            self.output_edit.setText(
-                os.path.splitext(self.input_files[0])[0] + "_esp.tga"
-            )
+        default_name = os.path.splitext(self.input_files[0])[0] + "_esp.tga"
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, "保存渲染输出", default_name,
+            "TGA (*.tga);;PNG (*.png);;BMP (*.bmp)"
+        )
+        if not output_path:
+            return
         self._log("")
         self._log("━━━ 渲染输出 ━━━")
-        self._run_job("render")
+        self._run_job("render", output_path=output_path)
 
     def _action_render_view(self):
         if not self.vmd_port:
@@ -1993,32 +2458,39 @@ class ESPSurfaceGUI(QMainWindow):
             QMessageBox.critical(self, "错误", f"Tachyon 不存在:\n{tachyon_exe}")
             return
 
+        # Pop up save dialog
+        default_name = ""
+        if self.input_files:
+            default_name = os.path.splitext(self.input_files[0])[0] + "_esp.png"
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, "保存渲染输出", default_name,
+            "PNG (*.png);;TGA (*.tga);;BMP (*.bmp)"
+        )
+        if not output_path:
+            return
+
         try:
             w_s, h_s = self.res_combo.currentText().split("x")
             resolution = (int(w_s), int(h_s))
         except (ValueError, AttributeError):
             resolution = (2000, 1500)
 
-        output_path = self.output_edit.text().strip()
-        if not output_path:
-            if self.input_files:
-                output_path = os.path.splitext(self.input_files[0])[0] + "_esp.png"
-            else:
-                output_path = os.path.join(self.vmd_render_dir or ".", "esp_render.png")
-
         self.btn_render_view.setEnabled(False)
+
+        nthreads = self.nthreads_spin.value()
 
         class RenderViewWorker(QThread):
             log_signal = pyqtSignal(str)
             finished_signal = pyqtSignal(bool, str)
 
-            def __init__(self, vmd_port, vmd_dir, tachyon_exe, output_path, resolution):
+            def __init__(self, vmd_port, vmd_dir, tachyon_exe, output_path, resolution, nthreads):
                 super().__init__()
                 self.vmd_port = vmd_port
                 self.vmd_dir = vmd_dir
                 self.tachyon_exe = tachyon_exe
                 self.output_path = output_path
                 self.resolution = resolution
+                self.nthreads = nthreads
 
             def run(self):
                 try:
@@ -2028,7 +2500,8 @@ class ESPSurfaceGUI(QMainWindow):
                     t0 = time.time()
                     result = render_current_view_tachyon(
                         self.vmd_port, self.vmd_dir,
-                        self.tachyon_exe, self.output_path, resolution=self.resolution
+                        self.tachyon_exe, self.output_path, resolution=self.resolution,
+                        nthreads=self.nthreads
                     )
                     dt = time.time() - t0
                     if result:
@@ -2043,7 +2516,8 @@ class ESPSurfaceGUI(QMainWindow):
 
         self._render_view_worker = RenderViewWorker(
             self.vmd_port, self.vmd_render_dir,
-            tachyon_exe, output_path, resolution
+            tachyon_exe, output_path, resolution,
+            nthreads
         )
         self._render_view_worker.log_signal.connect(self._log)
 
@@ -2081,6 +2555,33 @@ class ESPSurfaceGUI(QMainWindow):
             self.btn_pick.setText("● 选取中...")
         else:
             self.btn_pick.setText("🔍 查询极值点")
+
+    def _on_show_labels_toggle(self, state):
+        """Toggle ESP value labels on extremum points in VMD."""
+        if not self.vmd_port:
+            return
+        if state:
+            size = self._label_size_spin.value()
+            offset = self._label_offset_spin.value()
+            self._send_vmd_cmd_fast(f"show_extrema_labels {size} {offset}")
+            self._log(f"极值点数值已显示 (字号: {size}, 偏移: {offset}, 红=极大, 蓝=极小)")
+        else:
+            self._send_vmd_cmd_fast("clear_extrema_labels")
+            self._log("极值点数值已清除")
+
+    def _on_label_size_changed(self, val):
+        """When font size changes, redraw labels if currently shown."""
+        if not self.vmd_port or not self._show_labels_cb.isChecked():
+            return
+        offset = self._label_offset_spin.value()
+        self._send_vmd_cmd_fast(f"show_extrema_labels {val} {offset}")
+
+    def _on_label_offset_changed(self, val):
+        """When offset changes, redraw labels if currently shown."""
+        if not self.vmd_port or not self._show_labels_cb.isChecked():
+            return
+        size = self._label_size_spin.value()
+        self._send_vmd_cmd_fast(f"show_extrema_labels {size} {val}")
 
     def _action_detect_range(self):
         """Run Multiwfn module 12→0 standalone to query ESP surface min/max."""
@@ -2315,10 +2816,18 @@ class ESPSurfaceGUI(QMainWindow):
         self._worker.progress_signal.connect(self._set_progress)
         self._worker.status_signal.connect(self._set_status)
         self._worker.busy_signal.connect(self._set_busy)
+        self._worker.data_signal.connect(self._on_area_data_ready)
         self._worker.start()
 
-    def _run_job(self, action):
-        params = self._get_params(action)
+    def _on_area_data_ready(self, all_data):
+        """Show interactive matplotlib chart dialog after area computation."""
+        self._log("")
+        self._log("正在打开交互式图表窗口...")
+        dlg = AreaChartDialog(all_data, self)
+        dlg.exec_()
+
+    def _run_job(self, action, output_path=None):
+        params = self._get_params(action, output_path=output_path)
         self._worker = MultiwfnWorker(params)
         self._worker.log_signal.connect(self._log)
         self._worker.progress_signal.connect(self._set_progress)
@@ -2340,12 +2849,20 @@ class ESPSurfaceGUI(QMainWindow):
                     self._log("ISO/ALL 模式：可拖动 [透明度] 滑块调整等值面透明度")
                 if result.get('mode') in ('ext', 'all'):
                     self.btn_pick.setEnabled(True)
+                    self._show_labels_cb.setEnabled(True)
+                    self._log("EXT/ALL 模式：勾选 [显示极值数值] 一键标注 ESP 值")
                     self._log("EXT/ALL 模式：点击 [🔍 查询极值点] 可查看极值点 ESP 数值")
+                    # Auto-show labels if checkbox was pre-checked
+                    if self._show_labels_cb.isChecked():
+                        size = self._label_size_spin.value()
+                        offset = self._label_offset_spin.value()
+                        QTimer.singleShot(4000, lambda s=size, o=offset: self._send_vmd_cmd_fast(f"show_extrema_labels {s} {o}"))
             elif result['action'] == 'render':
                 output_path = result.get('output_path', '')
                 QMessageBox.information(self, "完成", f"渲染完成:\n{output_path}")
                 self.btn_render_view.setEnabled(False)
                 self.btn_pick.setEnabled(False)
+                self._show_labels_cb.setEnabled(False)
                 self.opacity_slider.setEnabled(False)
 
     # ══ VMD Pick Callback Server ══
@@ -2567,20 +3084,6 @@ QSpinBox:disabled, QDoubleSpinBox:disabled {
     background-color: #F1F5F9;
     color: #94A3B8;
     border: 1px solid #E2E8F0;
-}
-
-QSpinBox::up-button, QDoubleSpinBox::up-button {
-    width: 0;
-    height: 0;
-    border: none;
-    padding: 0;
-}
-
-QSpinBox::down-button, QDoubleSpinBox::down-button {
-    width: 0;
-    height: 0;
-    border: none;
-    padding: 0;
 }
 
 /* ── Combo Box ── */
