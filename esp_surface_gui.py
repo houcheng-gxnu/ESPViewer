@@ -1057,26 +1057,30 @@ def socket_tcl_snippet(port, callback_port=0):
 
     label_proc = (
         "\n# === One-click extremum label display ===\n"
-        "proc show_extrema_labels {{size 1.2} {offset 0.8}} {\n"
-        "    # Find surfanalysis.pdb molecule\n"
-        "    set molid -1\n"
+        "# Helper: locate molid of surfanalysis.pdb once, so that all subsequent\n"
+        "# 'graphics' operations target the extremum molecule explicitly rather\n"
+        "# than relying on VMD's 'top' molecule (which can be changed by the user\n"
+        "# in the VMD main window, breaking label cleanup).\n"
+        "proc _esp_find_sa_molid {} {\n"
         "    foreach m [molinfo list] {\n"
-        "        if {[molinfo $m get name] eq {surfanalysis.pdb}} {\n"
-        "            set molid $m\n"
-        "            break\n"
+        "        set molname [molinfo $m get name]\n"
+        "        if {[string match {*surfanalysis.pdb} $molname]} {\n"
+        "            return $m\n"
         "        }\n"
         "    }\n"
+        "    return -1\n"
+        "}\n"
+        "proc show_extrema_labels {{size 1.2} {offset 0.8}} {\n"
+        "    set molid [_esp_find_sa_molid]\n"
         "    if {$molid < 0} {\n"
         "        puts {ERROR: surfanalysis.pdb not found}\n"
         "        return\n"
         "    }\n"
-        "    # Clear previous labels\n"
-        "    draw delete all\n"
+        "    graphics $molid delete all\n"
         "    set sel [atomselect $molid all]\n"
         "    set coords [$sel get {x y z}]\n"
         "    set names  [$sel get name]\n"
         "    set betas  [$sel get beta]\n"
-        "    # Compute centroid of extremum points\n"
         "    set cx 0; set cy 0; set cz 0\n"
         "    set n [llength $coords]\n"
         "    foreach xyz $coords {\n"
@@ -1088,7 +1092,6 @@ def socket_tcl_snippet(port, callback_port=0):
         "    set cy [expr {$cy / $n}]\n"
         "    set cz [expr {$cz / $n}]\n"
         "    $sel delete\n"
-        "    # Draw labels — offset radially outward from centroid\n"
         "    foreach xyz $coords nm $names bt $betas {\n"
         "        set dx [expr {[lindex $xyz 0] - $cx}]\n"
         "        set dy [expr {[lindex $xyz 1] - $cy}]\n"
@@ -1104,17 +1107,41 @@ def socket_tcl_snippet(port, callback_port=0):
         "            set z [lindex $xyz 2]\n"
         "        }\n"
         "        if {$nm eq {C}} {\n"
-        "            draw color red\n"
+        "            graphics $molid color red\n"
         "        } else {\n"
-        "            draw color blue\n"
+        "            graphics $molid color blue\n"
         "        }\n"
-        "        draw text [list $x $y $z] [format {%.2f} $bt] size $size thickness 2\n"
+        "        graphics $molid text [list $x $y $z] [format {%.2f} $bt] size $size thickness 2\n"
         "    }\n"
         "    puts {Done.}\n"
         "}\n"
         "proc clear_extrema_labels {{}} {\n"
-        "    draw delete all\n"
+        "    set molid [_esp_find_sa_molid]\n"
+        "    if {$molid < 0} {\n"
+        "        puts {ERROR: surfanalysis.pdb not found}\n"
+        "        return\n"
+        "    }\n"
+        "    graphics $molid delete all\n"
         "    puts {Labels cleared}\n"
+        "}\n"
+        "proc hide_extrema_points {{}} {\n"
+        "    set molid [_esp_find_sa_molid]\n"
+        "    if {$molid < 0} {\n"
+        "        puts {ERROR: surfanalysis.pdb not found}\n"
+        "        return\n"
+        "    }\n"
+        "    mol off $molid\n"
+        "    graphics $molid delete all\n"
+        "    puts {Extrema points hidden}\n"
+        "}\n"
+        "proc show_extrema_points {{}} {\n"
+        "    set molid [_esp_find_sa_molid]\n"
+        "    if {$molid < 0} {\n"
+        "        puts {ERROR: surfanalysis.pdb not found}\n"
+        "        return\n"
+        "    }\n"
+        "    mol on $molid\n"
+        "    puts {Extrema points shown}\n"
         "}\n"
     )
 
@@ -1763,7 +1790,7 @@ TR = {
     "resolution": {"zh": "渲染分辨率:", "en": "Resolution:"},
     "opacity": {"zh": "透明度:", "en": "Opacity:"},
     "colorbar": {"zh": "显示色彩刻度轴", "en": "Show Color Scale Bar"},
-    "show_labels": {"zh": "显示极值数值", "en": "Show ESP Values"},
+    "show_labels": {"zh": "显示极值点", "en": "Show Extrema"},
     "nthreads": {"zh": "并行线程:", "en": "Threads:"},
     "pt_mode": {"zh": "PT 顶点着色", "en": "PT (Vertex Color)"},
     "iso_mode": {"zh": "ISO 等值面着色", "en": "ISO (Isosurface)"},
@@ -2556,17 +2583,19 @@ class ESPSurfaceGUI(QMainWindow):
             self.btn_pick.setText("🔍 查询极值点")
 
     def _on_show_labels_toggle(self, state):
-        """Toggle ESP value labels on extremum points in VMD."""
+        """Toggle ESP value labels AND extremum point spheres in VMD."""
         if not self.vmd_port:
             return
         if state:
             size = self._label_size_spin.value()
             offset = self._label_offset_spin.value()
+            self._send_vmd_cmd_fast("show_extrema_points")
             self._send_vmd_cmd_fast(f"show_extrema_labels {size} {offset}")
-            self._log(f"极值点数值已显示 (字号: {size}, 偏移: {offset}, 红=极大, 蓝=极小)")
+            self._log(f"极值点已显示 (字号: {size}, 偏移: {offset}, 红=极大, 蓝=极小)")
         else:
             self._send_vmd_cmd_fast("clear_extrema_labels")
-            self._log("极值点数值已清除")
+            self._send_vmd_cmd_fast("hide_extrema_points")
+            self._log("极值点已清除")
 
     def _on_label_size_changed(self, val):
         """When font size changes, redraw labels if currently shown."""
@@ -2678,7 +2707,12 @@ class ESPSurfaceGUI(QMainWindow):
         self._send_vmd_cmd_fast(f"material change opacity EdgyGlass {op}")
 
     def _send_vmd_cmd_fast(self, cmd):
-        """通过持久化 TCP socket 向 VMD 发送一条 Tcl 命令。"""
+        """通过持久化 TCP socket 向 VMD 发送一条 Tcl 命令。
+
+        recv 返回空字节表示 VMD 关闭了本连接，此时只清理 socket 不重试
+        （命令已发出，VMD 端 fileevent 会处理），避免重复发送。
+        下次调用时 self._vmd_persist_sock 为 None 会自动重建连接。
+        """
         if not self.vmd_port:
             return
         try:
@@ -2688,15 +2722,16 @@ class ESPSurfaceGUI(QMainWindow):
                 sock.connect(("127.0.0.1", self.vmd_port))
                 self._vmd_persist_sock = sock
             self._vmd_persist_sock.sendall((cmd + "\n").encode("utf-8"))
-            resp = b""
             try:
                 self._vmd_persist_sock.settimeout(0.5)
                 while True:
                     chunk = self._vmd_persist_sock.recv(4096)
                     if not chunk:
-                        break
-                    resp += chunk
-                    if b"\n" in resp:
+                        # VMD 关闭了连接，清理 socket，下次调用会重连。
+                        # 命令已经发出，无需重发。
+                        self._close_persist_sock()
+                        return
+                    if b"\n" in chunk:
                         break
             except socket.timeout:
                 pass
@@ -2849,13 +2884,16 @@ class ESPSurfaceGUI(QMainWindow):
                 if result.get('mode') in ('ext', 'all'):
                     self.btn_pick.setEnabled(True)
                     self._show_labels_cb.setEnabled(True)
-                    self._log("EXT/ALL 模式：勾选 [显示极值数值] 一键标注 ESP 值")
+                    self._log("EXT/ALL 模式：勾选 [显示极值点] 一键显示极值点及 ESP 数值")
                     self._log("EXT/ALL 模式：点击 [🔍 查询极值点] 可查看极值点 ESP 数值")
                     # Auto-show labels if checkbox was pre-checked
                     if self._show_labels_cb.isChecked():
                         size = self._label_size_spin.value()
                         offset = self._label_offset_spin.value()
-                        QTimer.singleShot(4000, lambda s=size, o=offset: self._send_vmd_cmd_fast(f"show_extrema_labels {s} {o}"))
+                        QTimer.singleShot(4000, lambda s=size, o=offset: (
+                            self._send_vmd_cmd_fast("show_extrema_points"),
+                            self._send_vmd_cmd_fast(f"show_extrema_labels {s} {o}")
+                        ))
             elif result['action'] == 'render':
                 output_path = result.get('output_path', '')
                 QMessageBox.information(self, "完成", f"渲染完成:\n{output_path}")
