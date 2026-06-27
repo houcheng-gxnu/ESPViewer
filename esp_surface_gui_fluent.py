@@ -146,43 +146,48 @@ class MultiwfnWorker(QThread):
             if not os.path.exists(fchk_in_work):
                 shutil.copy2(self.fchk_path, fchk_in_work)
 
-            # Write input file
-            input_path = os.path.join(self.work_dir, "_mwfn_input.txt")
-            lines = self.cmd_string.strip().split('\n')
-            # Always end with 'q' if not present
-            if lines and lines[-1].strip().lower() != 'q':
-                lines.append('q')
-            full_input = '\n'.join(lines) + '\n'
-            with open(input_path, 'w') as f:
-                f.write(full_input)
+            # Write command input file (same approach as v2.0)
+            cmd_file = os.path.join(self.work_dir, "_mw_cmd.txt")
+            cmd_str = self.cmd_string
+            if not cmd_str.startswith("\n"):
+                cmd_str = "\n" + cmd_str
+            with open(cmd_file, "w", encoding="ascii") as f:
+                f.write(cmd_str)
 
-            cmd_list = [self.mwfn_exe, fchk_name]
+            # Build shell command (file redirection for Fortran programs)
             if self.extra_args:
-                cmd_list.append(self.extra_args)
+                cmd = f'"{self.mwfn_exe}" "{fchk_name}" {self.extra_args} < _mw_cmd.txt'
+            else:
+                cmd = f'"{self.mwfn_exe}" "{fchk_name}" < _mw_cmd.txt'
 
-            proc = subprocess.run(
-                cmd_list,
-                input=full_input, text=True, capture_output=True, cwd=self.work_dir,
-                timeout=600, shell=False,
+            proc = subprocess.Popen(
+                cmd, shell=True, cwd=self.work_dir,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, bufsize=1,
             )
 
-            stdout = proc.stdout
-            stderr = proc.stderr
+            stdout_lines = []
+            while True:
+                line = proc.stdout.readline()
+                if not line and proc.poll() is not None:
+                    break
+                if line:
+                    stripped = line.rstrip()
+                    if stripped:
+                        self.log_signal.emit(stripped)
+                        stdout_lines.append(stripped)
+                    if '%' in stripped and 'finished' in stripped.lower():
+                        pct_match = re.search(r'(\d+)%', stripped)
+                        if pct_match:
+                            self.progress_signal.emit(int(pct_match.group(1)))
 
-            for line in stdout.split('\n'):
-                if line.strip():
-                    self.log_signal.emit(line.strip())
-                if '%' in line and 'finished' in line.lower():
-                    pct_match = re.search(r'(\d+)%', line)
-                    if pct_match:
-                        self.progress_signal.emit(int(pct_match.group(1)))
+            proc.wait()
+            stderr_text = proc.stderr.read()
 
-            if proc.returncode != 0 and stderr.strip():
-                self.error_signal.emit(stderr.strip()[:500])
-            elif 'error' in stdout.lower()[-200:].lower():
-                self.error_signal.emit(stdout[-500:])
+            if proc.returncode != 0 and stderr_text.strip():
+                self.error_signal.emit(stderr_text.strip()[:500])
             else:
-                self.finished_signal.emit(stdout)
+                self.finished_signal.emit("\n".join(stdout_lines))
         except subprocess.TimeoutExpired:
             self.error_signal.emit("Multiwfn timed out (>600s)")
         except Exception as e:
@@ -949,7 +954,7 @@ class AnalysisPage(QWidget):
             return
         fchk = self._files[0]
         mwfn_exe = self.config.get("multiwfn", DEFAULT_MULTIWFN)
-        vmd_dir = self.config.get("vmd_dir", os.path.dirname(mwfn_exe))
+        vmd_dir = self.config.get("vmd_dir") or os.path.dirname(mwfn_exe)
         nthreads = self.nthreads_spin.value()
         mode = self._current_mode
 
@@ -957,13 +962,14 @@ class AnalysisPage(QWidget):
         self._set_busy(True)
         self._set_status("Generating ESP surface...")
 
-        # Clean VMD dir
-        for fn in list(os.listdir(vmd_dir)):
-            if fn.endswith('.pdb') or fn.endswith('.cub') or fn.endswith('.tga'):
-                try:
-                    os.remove(os.path.join(vmd_dir, fn))
-                except Exception:
-                    pass
+        # Clean VMD dir (only if it exists)
+        if os.path.isdir(vmd_dir):
+            for fn in list(os.listdir(vmd_dir)):
+                if fn.endswith('.pdb') or fn.endswith('.cub') or fn.endswith('.tga'):
+                    try:
+                        os.remove(os.path.join(vmd_dir, fn))
+                    except Exception:
+                        pass
 
         self._preview_fch = fchk
         self._preview_mwfn_exe = mwfn_exe
@@ -1053,6 +1059,7 @@ class AnalysisPage(QWidget):
     def _launch_vmd(self):
         self._log("Generating VMD script...")
         vmd_dir = self._preview_vmd_dir
+        os.makedirs(vmd_dir, exist_ok=True)
         mwfn_exe = self._preview_mwfn_exe
         mode = self._current_mode
         nsystems = 1
