@@ -132,9 +132,14 @@ class MultiwfnWorker(QThread):
     def run(self):
         try:
             mwfn_base = self.mwfn_exe
-            self._apply_multiwfn_nthreads(os.path.dirname(mwfn_base), self.nthreads)
             mwfn_dir = os.path.dirname(mwfn_base)
+            self._apply_multiwfn_nthreads(mwfn_dir, self.nthreads)
+
+            # Copy .fch to Multiwfn dir (Fortran program can't find it elsewhere)
             fchk_base = os.path.basename(self.fchk_path)
+            fchk_in_mwfn = os.path.join(mwfn_dir, fchk_base)
+            if not os.path.exists(fchk_in_mwfn):
+                shutil.copy2(self.fchk_path, fchk_in_mwfn)
 
             cmd_lines = self.task_code.strip().split('\n')
             full_input = '\n'.join(cmd_lines) + '\n'
@@ -232,6 +237,12 @@ class AreaAnalysisWorker(QThread):
     def _analyze_one(self, fchk_path):
         mwfn_dir = os.path.dirname(self.mwfn_exe)
         fchk_base = os.path.basename(fchk_path)
+
+        # Copy .fch to Multiwfn dir
+        fchk_in_mwfn = os.path.join(mwfn_dir, fchk_base)
+        if not os.path.exists(fchk_in_mwfn):
+            shutil.copy2(fchk_path, fchk_in_mwfn)
+
         task = f"12\n7\n0\n{self.clow}\n{self.chigh}\n{self.n_bins}\n0\nq\n"
         try:
             proc = subprocess.run(
