@@ -87,12 +87,12 @@ TR = {
     "iso_mode": {"zh": "ISO 等值面着色", "en": "ISO (Isosurface)"},
     "ext_mode": {"zh": "EXT 极值点", "en": "EXT (Extrema)"},
     "all_mode": {"zh": "ALL 全部叠加", "en": "ALL (Overlay)"},
-    "btn_preview": {"zh": "▶ VMD 预览", "en": "▶ Preview"},
-    "btn_render_view": {"zh": "📷 渲染当前视角", "en": "📷 Render View"},
-    "btn_pick": {"zh": "🔍 查询极值点", "en": "🔍 Query Extrema"},
-    "btn_render": {"zh": "▼ 渲染输出", "en": "▼ Batch Render"},
-    "btn_area": {"zh": "📊 ESP分区面积图", "en": "📊 Area Chart"},
-    "btn_stop": {"zh": "■ 停止", "en": "■ Stop"},
+    "btn_preview": {"zh": "VMD 预览", "en": "Preview"},
+    "btn_render_view": {"zh": "渲染当前视角", "en": "Render View"},
+    "btn_pick": {"zh": "查询极值点", "en": "Query Extrema"},
+    "btn_render": {"zh": "渲染输出", "en": "Batch Render"},
+    "btn_area": {"zh": "ESP分区面积图", "en": "Area Chart"},
+    "btn_stop": {"zh": "停止", "en": "Stop"},
     "lang_btn": {"zh": "EN", "en": "中文"},
 }
 
