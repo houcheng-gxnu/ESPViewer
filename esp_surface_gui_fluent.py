@@ -56,6 +56,11 @@ CONFIG_FILE = os.path.join(
     "esp_viewer_config.ini"
 )
 
+# ── Multiwfn Command Templates ──
+CMD_ESPPT = "\n".join(["12", "3", "0.15", "0", "5", "mol.pdb", "6"])
+CMD_ESPISO = "\n".join(["5", "1", "3", "2", "0", "5", "12", "1", "2"])
+CMD_ESPEXT = "\n".join(["12", "3", "0.15", "0", "5", "mol.pdb", "6", "2"])
+
 # ── i18n ──
 TR = {
     "win_title": {"zh": "ESPViewer — 分子表面静电势可视化", "en": "ESPViewer — Molecular Surface ESP Visualization"},
@@ -107,17 +112,18 @@ class MultiwfnWorker(QThread):
     finished_signal = pyqtSignal(str)
     error_signal = pyqtSignal(str)
 
-    def __init__(self, fchk_path, task_code, mwfn_exe, params=None):
+    def __init__(self, mwfn_exe, work_dir, fchk_path, cmd_string, extra_args="", nthreads=14):
         super().__init__()
-        self.fchk_path = fchk_path
-        self.task_code = task_code
         self.mwfn_exe = mwfn_exe
-        self.params = params or {}
-        self.nthreads = self.params.get('nthreads', 14)
+        self.work_dir = work_dir
+        self.fchk_path = fchk_path
+        self.cmd_string = cmd_string
+        self.extra_args = extra_args
+        self.nthreads = nthreads
 
     @staticmethod
-    def _apply_multiwfn_nthreads(mwfn_base, nthreads):
-        settings_path = os.path.join(os.path.dirname(mwfn_base), "settings.ini")
+    def _apply_multiwfn_nthreads(mwfn_dir, nthreads):
+        settings_path = os.path.join(mwfn_dir, "settings.ini")
         if not os.path.exists(settings_path):
             return
         try:
@@ -131,22 +137,32 @@ class MultiwfnWorker(QThread):
 
     def run(self):
         try:
-            mwfn_base = self.mwfn_exe
-            mwfn_dir = os.path.dirname(mwfn_base)
+            mwfn_dir = os.path.dirname(self.mwfn_exe)
             self._apply_multiwfn_nthreads(mwfn_dir, self.nthreads)
+            os.makedirs(self.work_dir, exist_ok=True)
 
-            # Copy .fch to Multiwfn dir (Fortran program can't find it elsewhere)
-            fchk_base = os.path.basename(self.fchk_path)
-            fchk_in_mwfn = os.path.join(mwfn_dir, fchk_base)
-            if not os.path.exists(fchk_in_mwfn):
-                shutil.copy2(self.fchk_path, fchk_in_mwfn)
+            fchk_name = os.path.basename(self.fchk_path)
+            fchk_in_work = os.path.join(self.work_dir, fchk_name)
+            if not os.path.exists(fchk_in_work):
+                shutil.copy2(self.fchk_path, fchk_in_work)
 
-            cmd_lines = self.task_code.strip().split('\n')
-            full_input = '\n'.join(cmd_lines) + '\n'
+            # Write input file
+            input_path = os.path.join(self.work_dir, "_mwfn_input.txt")
+            lines = self.cmd_string.strip().split('\n')
+            # Always end with 'q' if not present
+            if lines and lines[-1].strip().lower() != 'q':
+                lines.append('q')
+            full_input = '\n'.join(lines) + '\n'
+            with open(input_path, 'w') as f:
+                f.write(full_input)
+
+            cmd_list = [self.mwfn_exe, fchk_name]
+            if self.extra_args:
+                cmd_list.append(self.extra_args)
 
             proc = subprocess.run(
-                [mwfn_base, fchk_base],
-                input=full_input, text=True, capture_output=True, cwd=mwfn_dir,
+                cmd_list,
+                input=full_input, text=True, capture_output=True, cwd=self.work_dir,
                 timeout=600, shell=False,
             )
 
@@ -236,22 +252,30 @@ class AreaAnalysisWorker(QThread):
 
     def _analyze_one(self, fchk_path):
         mwfn_dir = os.path.dirname(self.mwfn_exe)
-        fchk_base = os.path.basename(fchk_path)
+        work_dir = tempfile.mkdtemp(prefix="_area_")
+        fchk_name = os.path.basename(fchk_path)
+        fchk_in_work = os.path.join(work_dir, fchk_name)
+        shutil.copy2(fchk_path, fchk_in_work)
 
-        # Copy .fch to Multiwfn dir
-        fchk_in_mwfn = os.path.join(mwfn_dir, fchk_base)
-        if not os.path.exists(fchk_in_mwfn):
-            shutil.copy2(fchk_path, fchk_in_mwfn)
-
-        task = f"12\n7\n0\n{self.clow}\n{self.chigh}\n{self.n_bins}\n0\nq\n"
+        cmd = f"12\n\n0\n9\nall"
         try:
             proc = subprocess.run(
-                [self.mwfn_exe, fchk_base],
-                input=task, text=True, capture_output=True, cwd=mwfn_dir,
+                [self.mwfn_exe, fchk_name],
+                input=cmd, text=True, capture_output=True, cwd=work_dir,
                 timeout=600,
             )
-            return self._parse_area_output(proc.stdout)
+            data = self._parse_area_output(proc.stdout)
+            # Cleanup
+            try:
+                shutil.rmtree(work_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return data
         except Exception:
+            try:
+                shutil.rmtree(work_dir, ignore_errors=True)
+            except Exception:
+                pass
             return None
 
     def _parse_area_output(self, stdout):
@@ -923,86 +947,224 @@ class AnalysisPage(QWidget):
                 position=InfoBarPosition.TOP_RIGHT, parent=self
             )
             return
-        mwfn_dir = os.path.dirname(self.config.get("multiwfn", DEFAULT_MULTIWFN))
         fchk = self._files[0]
-        self._log(f"Starting VMD preview: {os.path.basename(fchk)}")
+        mwfn_exe = self.config.get("multiwfn", DEFAULT_MULTIWFN)
+        vmd_dir = self.config.get("vmd_dir", os.path.dirname(mwfn_exe))
+        nthreads = self.nthreads_spin.value()
+        mode = self._current_mode
+
+        self._log(f"Starting VMD preview: {os.path.basename(fchk)} (mode: {mode})")
         self._set_busy(True)
         self._set_status("Generating ESP surface...")
 
-        task = self._build_multiwfn_task()
-        self._mwfn_worker = MultiwfnWorker(
-            fchk, task, self.config.get("multiwfn", DEFAULT_MULTIWFN),
-            params={'nthreads': self.nthreads_spin.value()}
-        )
-        self._mwfn_worker.log_signal.connect(self._log)
-        self._mwfn_worker.finished_signal.connect(self._on_preview_done)
-        self._mwfn_worker.error_signal.connect(lambda e: self._log(f"Error: {e}"))
-        self._mwfn_worker.start()
+        # Clean VMD dir
+        for fn in list(os.listdir(vmd_dir)):
+            if fn.endswith('.pdb') or fn.endswith('.cub') or fn.endswith('.tga'):
+                try:
+                    os.remove(os.path.join(vmd_dir, fn))
+                except Exception:
+                    pass
 
-    def _build_multiwfn_task(self):
-        """Build Multiwfn input for the current mode."""
+        self._preview_fch = fchk
+        self._preview_mwfn_exe = mwfn_exe
+        self._preview_vmd_dir = vmd_dir
+        self._preview_steps = []
+        self._preview_step_idx = -1
+
+        if mode in ("pt", "all"):
+            self._preview_steps.append(("pt", CMD_ESPPT, "ESPpt"))
+        if mode in ("iso", "all"):
+            self._preview_steps.append(("iso", CMD_ESPISO, "ESPiso"))
+        if mode in ("ext", "all"):
+            self._preview_steps.append(("ext", CMD_ESPEXT, "ESPext"))
+
+        self._preview_run_next_step()
+
+    def _preview_run_next_step(self):
+        self._preview_step_idx += 1
+        if self._preview_step_idx >= len(self._preview_steps):
+            # All steps done — launch VMD
+            self._launch_vmd()
+            return
+
+        step_mode, cmd, label = self._preview_steps[self._preview_step_idx]
+        total = len(self._preview_steps)
+        self._log(f"[{self._preview_step_idx + 1}/{total}] Multiwfn {label}...")
+        self._set_status(f"Running {label}...")
+
+        import tempfile
+        self._preview_tmp_dir = tempfile.mkdtemp(prefix="_esp_preview_")
+
+        extra_args = ""
+        if step_mode == "iso":
+            extra_args = "-ESPrhoiso 0.001"
+
+        self._preview_current_worker = MultiwfnWorker(
+            self._preview_mwfn_exe, self._preview_tmp_dir,
+            self._preview_fch, cmd, extra_args=extra_args,
+            nthreads=self.nthreads_spin.value(),
+        )
+        self._preview_current_worker.log_signal.connect(self._log)
+        self._preview_current_worker.finished_signal.connect(self._on_preview_step_done)
+        self._preview_current_worker.error_signal.connect(self._on_preview_step_error)
+        self._preview_current_worker.start()
+
+    def _on_preview_step_done(self, stdout):
+        step_mode = self._preview_steps[self._preview_step_idx][0]
+        vmd_dir = self._preview_vmd_dir
+        tmp_dir = self._preview_tmp_dir
+        sys_num = 1  # single file
+
+        # Copy output files to VMD dir
+        if step_mode == "pt":
+            for fn in ("mol.pdb", "vtx.pdb"):
+                src = os.path.join(tmp_dir, fn)
+                if os.path.exists(src):
+                    dest_fn = fn.replace(".pdb", f"{sys_num}.pdb")
+                    shutil.copy2(src, os.path.join(vmd_dir, dest_fn))
+            self._log(f"  {step_mode.upper()} OK")
+        elif step_mode == "iso":
+            for src_fn, dest_fn in [("density.cub", f"density{sys_num}.cub"),
+                                     ("totesp.cub", f"ESP{sys_num}.cub")]:
+                src = os.path.join(tmp_dir, src_fn)
+                if os.path.exists(src):
+                    shutil.copy2(src, os.path.join(vmd_dir, dest_fn))
+            self._log(f"  {step_mode.upper()} OK")
+        elif step_mode == "ext":
+            for fn in ("mol.pdb", "vtx.pdb", "surfanalysis.pdb"):
+                src = os.path.join(tmp_dir, fn)
+                if os.path.exists(src):
+                    shutil.copy2(src, os.path.join(vmd_dir, fn))
+            self._log(f"  {step_mode.upper()} OK")
+
+        # Cleanup tmp dir
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+        self._preview_run_next_step()
+
+    def _on_preview_step_error(self, err):
+        self._log(f"Error: {err}")
+        self._set_busy(False)
+        self._set_status("Preview failed")
+
+    def _launch_vmd(self):
+        self._log("Generating VMD script...")
+        vmd_dir = self._preview_vmd_dir
+        mwfn_exe = self._preview_mwfn_exe
         mode = self._current_mode
+        nsystems = 1
+
         clow = float(self.clow_edit.text() or "-50")
         chigh = float(self.chigh_edit.text() or "50")
         ptsize = float(self.ptsize_edit.text() or "2.0")
+        show_colorbar = self.colorbar_cb.isChecked()
 
-        # Convert kcal/mol to a.u. for Multiwfn
-        clow_au = clow / AU
-        chigh_au = chigh / AU
+        script = self._generate_vmd_script(
+            mwfn_exe, vmd_dir, nsystems, mode,
+            clow, chigh, ptsize, show_colorbar,
+        )
+        self._log(f"VMD script written")
 
-        if mode == "pt":
-            return f"12\n7\n1\n{clow_au:.8f}\n{chigh_au:.8f}\n{ptsize:.1f}\n0\nq\n"
-        elif mode == "iso":
-            self._iso_in_use = True
-            return f"12\n7\n2\n{clow_au:.8f}\n{chigh_au:.8f}\n{ptsize:.1f}\n0\nq\n"
-        elif mode == "ext":
-            return f"12\n7\n3\n{clow_au:.8f}\n{chigh_au:.8f}\n{ptsize:.1f}\n0\nq\n"
-        else:  # all
-            return f"12\n7\n4\n{clow_au:.8f}\n{chigh_au:.8f}\n{ptsize:.1f}\n0\nq\n"
+        if not os.path.exists(os.path.join(vmd_dir, "surfanalysis.vmd")):
+            with open(os.path.join(vmd_dir, "surfanalysis.vmd"), "w") as f:
+                f.write(script)
 
-    def _on_preview_done(self, stdout):
-        self._log("Multiwfn done. Launching VMD...")
         vmd_exe = self.config.get("vmd", DEFAULT_VMD)
-        vmd_dir = self.config.get("vmd_dir", os.path.dirname(self.config.get("multiwfn", DEFAULT_MULTIWFN)))
-
         if not os.path.exists(vmd_exe):
             self._log(f"VMD not found at: {vmd_exe}")
             self._set_busy(False)
+            self._set_status("VMD not found")
             return
 
-        # Copy surface files to VMD dir and launch VMD
-        mwfn_dir = os.path.dirname(self.config.get("multiwfn", DEFAULT_MULTIWFN))
-        try:
-            for fn in os.listdir(mwfn_dir):
-                if fn.endswith('.pdb') or fn.endswith('.cub') or fn.endswith('.tga'):
-                    src = os.path.join(mwfn_dir, fn)
-                    dst = os.path.join(vmd_dir, fn)
-                    if os.path.exists(src):
-                        shutil.copy2(src, dst)
-        except Exception as e:
-            self._log(f"Copy warning: {e}")
-
-        # Launch VMD in background
-        threading.Thread(target=self._launch_vmd, daemon=True).start()
-        self._set_status("VMD launched")
+        self._log("Launching VMD...")
+        threading.Thread(target=self._launch_vmd_process,
+                         args=(vmd_exe, vmd_dir, mode), daemon=True).start()
         self._set_busy(False)
+        self._set_status("VMD launched")
         self.btn_render_view.setEnabled(True)
-        self.btn_pick.setEnabled(True)
+        if mode in ("ext", "all"):
+            self.btn_pick.setEnabled(True)
 
-    def _launch_vmd(self):
-        vmd_exe = self.config.get("vmd", DEFAULT_VMD)
-        vmd_dir = self.config.get("vmd_dir", os.path.dirname(self.config.get("multiwfn", DEFAULT_MULTIWFN)))
+    def _generate_vmd_script(self, mwfn_exe, vmd_dir, nsystems, mode,
+                             clow, chigh, ptsize, show_colorbar):
+        clow_au = clow / AU
+        chigh_au = chigh / AU
 
+        lines = []
+        lines.append("# VMD script generated by ESPViewer")
+        lines.append("")
+        lines.append("display resetview")
+        lines.append("display projection Orthographic")
+        lines.append("color Display Background white")
+        lines.append("axes location Off")
+        lines.append("")
+
+        if mode == "pt":
+            for i in range(1, nsystems + 1):
+                lines.append(f"mol new {{{vmd_dir.replace(chr(92), '/')}/mol{i}.pdb}}")
+                lines.append(f"mol addfile {{{vmd_dir.replace(chr(92), '/')}/vtx{i}.pdb}}")
+                lines.append("mol modstyle 0 0 Points 2 0")
+                lines.append("mol modcolor 0 0 Beta")
+                lines.append(f"mol scaleminmax 0 0 {clow_au:.8f} {chigh_au:.8f}")
+                lines.append("")
+        elif mode == "iso":
+            for i in range(1, nsystems + 1):
+                lines.append(f"mol new {{{vmd_dir.replace(chr(92), '/')}/density{i}.cub}}")
+                lines.append(f"mol addfile {{{vmd_dir.replace(chr(92), '/')}/ESP{i}.cub}}")
+                lines.append("mol modstyle 0 0 Isosurface 0.001 0 0 0 1 1")
+                lines.append("mol modcolor 0 0 Volume 0")
+                lines.append(f"mol scaleminmax 0 0 {clow_au:.8f} {chigh_au:.8f}")
+                lines.append("mol modmaterial 0 0 Transparent")
+                lines.append("")
+        elif mode == "ext":
+            for i in range(1, nsystems + 1):
+                lines.append(f"mol new {{{vmd_dir.replace(chr(92), '/')}/mol{i}.pdb}}")
+                lines.append("mol modstyle 0 0 CPK 0.4 0.2 0.5 0.5")
+                lines.append("")
+            lines.append(f"mol new {{{vmd_dir.replace(chr(92), '/')}/surfanalysis.pdb}}")
+            lines.append("mol modstyle 0 0 VDW 1.0 12.0")
+            lines.append("mol modcolor 0 0 Name")
+            lines.append("")
+        elif mode == "all":
+            # ISO
+            for i in range(1, nsystems + 1):
+                lines.append(f"mol new {{{vmd_dir.replace(chr(92), '/')}/density{i}.cub}}")
+                lines.append(f"mol addfile {{{vmd_dir.replace(chr(92), '/')}/ESP{i}.cub}}")
+                lines.append("mol modstyle 0 0 Isosurface 0.001 0 0 0 1 1")
+                lines.append("mol modcolor 0 0 Volume 0")
+                lines.append(f"mol scaleminmax 0 0 {clow_au:.8f} {chigh_au:.8f}")
+                lines.append("mol modmaterial 0 0 Transparent")
+                lines.append("")
+            # EXT
+            lines.append(f"mol new {{{vmd_dir.replace(chr(92), '/')}/surfanalysis.pdb}}")
+            lines.append("mol modstyle 0 0 VDW 1.0 12.0")
+            lines.append("mol modcolor 0 0 Name")
+            lines.append("")
+
+        if show_colorbar:
+            lines.append("colorscalebar 1.4")
+
+        return '\n'.join(lines)
+
+    def _launch_vmd_process(self, vmd_exe, vmd_dir, mode):
         try:
-            subprocess.Popen([vmd_exe, "-e", "surfanalysis.vmd"], cwd=vmd_dir,
-                             shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            script_path = os.path.join(vmd_dir, "surfanalysis.vmd")
+            subprocess.Popen(
+                [vmd_exe, "-e", "surfanalysis.vmd"], cwd=vmd_dir,
+                shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
             time.sleep(3)
             if self._vmd.connect():
                 self._log("VMD socket connected (port 7777)")
-                if self._current_mode in ("iso", "all"):
-                    self._send_vmd_cmd("mol scaleminmax 0 0 [expr {1.0/627.509*" +
-                                       self.clow_edit.text() + "}] [expr {1.0/627.509*" +
-                                       self.chigh_edit.text() + "}]")
+                if mode in ("iso", "all"):
+                    clow = float(self.clow_edit.text() or "-50")
+                    chigh = float(self.chigh_edit.text() or "50")
+                    clow_au = clow / AU
+                    chigh_au = chigh / AU
+                    self._send_vmd_cmd(f"mol scaleminmax 0 0 {clow_au:.8f} {chigh_au:.8f}")
                 if self.colorbar_cb.isChecked():
                     self._send_vmd_cmd("colorscalebar 1.4")
             else:
