@@ -225,7 +225,7 @@ pyinstaller ESPViewer2.spec   # v2.0 打包
 
 ### 下载预打包版本
 
-📦 打包好的 exe 请到 Release 页面下载：[Releases](https://cnb.cool/chem311/ESPViewer/-/releases)
+📦 打包好的 exe 请到 Release 页面下载：[V2.0 Release](https://cnb.cool/chem311/ESPViewer/-/releases/tag/V2.0)
 
 - `ESPViewer_CN.exe` — 中文增强版
 - `ESPViewer_EN.exe` — 英文增强版
