@@ -14,19 +14,19 @@
 
 **如果您的研究使用了本软件，除引用 ESPViewer 外，还请务必引用以下核心工作：**
 
-> Jun Zhang, Tian Lu, *Efficient Evaluation of Electrostatic Potential with Computerized Optimized Code*, Phys. Chem. Chem. Phys., **2021**, 23, 20323. DOI: [10.1039/d1cp02805g](https://doi.org/10.1039/d1cp02805g)
+### 1. ESP 高效计算方法
+> Jun Zhang, Tian Lu, *Efficient Evaluation of Electrostatic Potential with Computerized Optimized Code*, Phys. Chem. Chem. Phys., **2021**, 23(36), 20323–20328. DOI: [10.1039/d1cp02805g](https://doi.org/10.1039/d1cp02805g)
 
-ESP 表面分析功能基于卢天老师的文章：
+### 2. ESP 表面分析（分子表面定量分析方法基础）
+> Tian Lu, Feiwu Chen, *Quantitative Analysis of Molecular Surface Based on Improved Marching Tetrahedra Algorithm*, J. Mol. Graph. Model., **2012**, 38, 314–323. DOI: [10.1016/j.jmgm.2012.07.004](https://doi.org/10.1016/j.jmgm.2012.07.004)
 
-> Tian Lu, Feiwu Chen, *Quantitative Analysis of Molecular Surface Based on Improved Marching Tetrahedra Algorithm*, J. Mol. Graph. Model., **2012**, 38, 314. DOI: [10.1016/j.jmgm.2012.07.004](https://doi.org/10.1016/j.jmgm.2012.07.004)
+### 3. 静电势分布柱形图 — 首次提出
+> Sergio Manzetti, Tian Lu, *The Geometry and Electronic Structure of Aristolochic Acid: Possible Implications for a Frozen Resonance*, J. Phys. Org. Chem., **2013**, 26(6), 473–483. DOI: [10.1002/poc.3111](https://doi.org/10.1002/poc.3111)
 
-**静电势分布柱形图统计方法**在以下两篇文章中首次提出和使用，如果您在文章中也使用了这种图，除引用 Multiwfn 原文外请一并引用：
+### 4. 静电势分布柱形图 — 首次使用
+> Tian Lu, Sergio Manzetti, *Wavefunction and Reactivity Study of Benzo[a]pyrene Diol Epoxide and Its Enantiomeric Forms*, Struct. Chem., **2014**, 25(5), 1521–1533. DOI: [10.1007/s11224-014-0430-6](https://doi.org/10.1007/s11224-014-0430-6)
 
-> Tian Lu, Feiwu Chen, *Multiwfn: A Multifunctional Wavefunction Analyzer*, J. Comput. Chem., **2012**, 33, 580–592. DOI: [10.1002/jcc.22885](https://doi.org/10.1002/jcc.22885)
->
-> Tian Lu, Shiang-Tai Lin, *Quantitative Analysis of Molecular Surface Electrostatic Potential Distribution and Its Application in Molecular Characterization*, J. Phys. Org. Chem., **2013**, 26, 473–483.
->
-> Tian Lu, Shiang-Tai Lin, *Revealing the Nature of Intermolecular Interactions by Molecular Surface Electrostatic Potential Analysis*, Struct. Chem., **2014**, 25, 1521.
+**静电势分布柱形图统计方法**在上述第 3、4 两篇文章中首次提出和使用。如果您在文章中也使用了这种图，除引用 Multiwfn 原文（J. Comput. Chem. 2012 / J. Chem. Phys. 2024）外，请一并引用这两篇。
 
 ---
 
