@@ -1,7 +1,5 @@
 # ESPViewer v2.0
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20791148.svg)](https://doi.org/10.5281/zenodo.20791148)
-
 基于 Multiwfn + VMD 的静电势（ESP）表面可视化工具，PyQt5 GUI 界面。
 
 📺 **视频演示**：[B站 BV1zSVW6PEwe](https://www.bilibili.com/video/BV1zSVW6PEwe/)
