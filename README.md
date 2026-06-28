@@ -10,6 +10,26 @@
 
 ---
 
+## 📖 必引文献 / Required Citations
+
+**如果您的研究使用了本软件，除引用 ESPViewer 外，还请务必引用以下核心工作：**
+
+> Jun Zhang, Tian Lu, *Efficient Evaluation of Electrostatic Potential with Computerized Optimized Code*, Phys. Chem. Chem. Phys., **2021**, 23, 20323. DOI: [10.1039/d1cp02805g](https://doi.org/10.1039/d1cp02805g)
+
+ESP 表面分析功能基于卢天老师的文章：
+
+> Tian Lu, Feiwu Chen, *Quantitative Analysis of Molecular Surface Based on Improved Marching Tetrahedra Algorithm*, J. Mol. Graph. Model., **2012**, 38, 314. DOI: [10.1016/j.jmgm.2012.07.004](https://doi.org/10.1016/j.jmgm.2012.07.004)
+
+**静电势分布柱形图统计方法**在以下两篇文章中首次提出和使用，如果您在文章中也使用了这种图，除引用 Multiwfn 原文外请一并引用：
+
+> Tian Lu, Feiwu Chen, *Multiwfn: A Multifunctional Wavefunction Analyzer*, J. Comput. Chem., **2012**, 33, 580–592. DOI: [10.1002/jcc.22885](https://doi.org/10.1002/jcc.22885)
+>
+> Tian Lu, Shiang-Tai Lin, *Quantitative Analysis of Molecular Surface Electrostatic Potential Distribution and Its Application in Molecular Characterization*, J. Phys. Org. Chem., **2013**, 26, 473–483.
+>
+> Tian Lu, Shiang-Tai Lin, *Revealing the Nature of Intermolecular Interactions by Molecular Surface Electrostatic Potential Analysis*, Struct. Chem., **2014**, 25, 1521.
+
+---
+
 ## 功能
 
 ### 四种分析模式
