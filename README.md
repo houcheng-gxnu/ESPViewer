@@ -28,6 +28,8 @@
 
 **静电势分布柱形图统计方法**在上述第 3、4 两篇文章中首次提出和使用。如果您在文章中也使用了这种图，除引用 Multiwfn 原文（J. Comput. Chem. 2012 / J. Chem. Phys. 2024）外，请一并引用这两篇。
 
+> 💡 **一键导入 EndNote**：下载仓库中的 [`references.ris`](https://cnb.cool/chem311/ESPViewer/-/blob/master/references.ris) 文件，EndNote 菜单 `File → Import → Import Option: RIS` 即可导入上述全部文献。
+
 ---
 
 ## 功能
