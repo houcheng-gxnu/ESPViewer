@@ -1,5 +1,333 @@
 # ESPViewer v2.0
 
+An electrostatic potential (ESP) surface visualization tool based on Multiwfn + VMD with a PyQt5 GUI.
+
+📺 **Video Demo**: [Bilibili BV1zSVW6PEwe](https://www.bilibili.com/video/BV1zSVW6PEwe/)
+
+> **v2.0 Major Update**: Fixed rendering bugs + Color scale bar + Bilingual UI + Multithreaded processing!
+
+---
+
+## 📖 Required Citations
+
+**If you use this software in your research, in addition to citing ESPViewer itself, please cite the following core works:**
+
+> 💡 **One-click EndNote Import**: Download [`references.ris`](https://cnb.cool/chem311/ESPViewer/-/blob/master/references.ris) from this repository, then `File → Import → Import Option: RIS` in EndNote to import all references below.
+
+### 1. Efficient ESP Evaluation Method
+> Jun Zhang, Tian Lu, *Efficient Evaluation of Electrostatic Potential with Computerized Optimized Code*, Phys. Chem. Chem. Phys., **2021**, 23(36), 20323–20328. DOI: [10.1039/d1cp02805g](https://doi.org/10.1039/d1cp02805g)
+
+### 2. Molecular Surface Quantitative Analysis (Methodological Foundation)
+> Tian Lu, Feiwu Chen, *Quantitative Analysis of Molecular Surface Based on Improved Marching Tetrahedra Algorithm*, J. Mol. Graph. Model., **2012**, 38, 314–323. DOI: [10.1016/j.jmgm.2012.07.004](https://doi.org/10.1016/j.jmgm.2012.07.004)
+
+### 3. ESP Distribution Histogram — First Proposed
+> Sergio Manzetti, Tian Lu, *The Geometry and Electronic Structure of Aristolochic Acid: Possible Implications for a Frozen Resonance*, J. Phys. Org. Chem., **2013**, 26(6), 473–483. DOI: [10.1002/poc.3111](https://doi.org/10.1002/poc.3111)
+
+### 4. ESP Distribution Histogram — First Used
+> Tian Lu, Sergio Manzetti, *Wavefunction and Reactivity Study of Benzo[a]pyrene Diol Epoxide and Its Enantiomeric Forms*, Struct. Chem., **2014**, 25(5), 1521–1533. DOI: [10.1007/s11224-014-0430-6](https://doi.org/10.1007/s11224-014-0430-6)
+
+**The ESP distribution histogram method** was first proposed and used in papers 3 and 4 above. If you use such plots in your publications, please cite these two papers in addition to the original Multiwfn papers (J. Comput. Chem. 2012 / J. Chem. Phys. 2024).
+
+---
+
+## Features
+
+### Four Analysis Modes
+
+| Mode | Description |
+|------|-------------|
+| **PT** (Vertex-colored) | Molecular surface vertices colored by ESP values, BWR color scale |
+| **ISO** (Isosurface) | ρ=0.001 electron density isosurface, EdgyGlass semi-transparent material |
+| **EXT** (Extrema) | Display ESP extrema points (maxima/minima) on the vdW surface |
+| **ALL** (Overlay) | ISO + EXT combined, with extrema points labeled on the isosurface |
+
+### Interactive VMD Preview
+
+- Real-time 3D molecular surface rendering with free rotation/zoom/pan
+- VMD TCP socket real-time control (color range, opacity adjustments take effect instantly)
+- Color range changes **immediately refresh** in VMD — no need to restart preview
+
+### Color Scale Bar 🆕
+
+- VMD built-in `ColorScaleBar` with clear ESP (kcal/mol) labels on the left
+- 10 tick marks, linked in real-time to the color range
+- One-click toggle; available in both preview and rendered output
+
+### Tachyon Dual-Path Rendering 🔧
+
+| Path | Description |
+|------|-------------|
+| **Headless Mode** (One-click) | VMD text mode + `TachyonInternal`, outputs TGA automatically after Multiwfn computation, no VMD window needed |
+| **Interactive Mode** (Adjust then render) | Fine-tune view in VMD preview, then call external `tachyon_WIN32.exe`, up to 4000×3000 resolution, multi-threaded |
+
+Two independent paths, completely fixing v1.x render failures.
+
+### Multi-level Resolution 🆕
+
+| Level | Resolution | Use Case |
+|-------|-----------|----------|
+| Low | 1200×900 | Quick preview |
+| Medium | 2000×1500 | Regular publication |
+| High | 3000×2250 | High-quality output |
+| Ultra | 4000×3000 | Publication-grade quality |
+
+### Interactive Extremum Query 🆕
+
+- Click extremum point spheres in VMD preview to query ESP values in real-time
+- Extremum label toggle (font size and offset adjustable)
+- Real-time font size and offset distance adjustments
+
+### ESP Area Distribution Chart 🆕
+
+- Surface area distribution histogram + line chart, interactive matplotlib window
+- Editable chart title and axis labels
+- Two Y-axis modes: area (Å²) and percentage
+- Customizable colormap and legend toggle
+- Data export: `_esp_area_data.txt` (tab-separated, importable by Origin/Excel)
+
+### ESP Range Auto-Detection
+
+- Automatically runs Multiwfn module 12 to query global ESP surface extrema
+- Auto-fills color range into UI, reducing manual input
+
+### Batch Processing
+
+- Supports single/multiple .fch/.fchk file selection
+- Supports importing an entire folder
+- Unlimited batch file count, auto-numbered systems
+- Progress bar reflects multi-step progress in real-time
+
+### Bilingual UI 🆕
+
+- Built-in full Chinese/English interface切换, no extra language pack needed
+- One-click toggle button; all UI text and logs update instantly
+
+### Other Features
+
+- Real-time opacity slider adjustment (ISO/ALL modes)
+- Multiwfn parallel thread count setting (1–64)
+- Multi-threaded Tachyon rendering
+- Path configuration auto-saved to `esp_surface_gui.ini`
+- Automatic temporary directory cleanup
+- Background QThread multithreading: UI stays responsive
+
+---
+
+## Dependencies
+
+### Required (External Programs)
+
+| Tool | Purpose | Download |
+|------|---------|----------|
+| [Multiwfn](http://sobereva.com/multiwfn/) | Compute ESP surface data from .fchk | [Multiwfn Download](http://sobereva.com/multiwfn/) |
+| [VMD](https://www.ks.uiuc.edu/Research/vmd/) | 3D molecular visualization + built-in Tachyon renderer | [VMD Download](https://www.ks.uiuc.edu/Development/Download/download.cgi?PackageName=VMD) |
+| Tachyon (bundled with VMD) | External ray-tracing renderer (needed for interactive mode) | `tachyon_WIN32.exe` in VMD directory |
+
+### Python Packages
+
+```bash
+pip install PyQt5 matplotlib numpy pillow
+```
+
+| Package | Purpose | Required |
+|---------|---------|----------|
+| `PyQt5` | GUI framework | ✅ |
+| `matplotlib` | ESP area distribution chart | Optional (chart disabled without it) |
+| `numpy` | Numerical computation (chart dependency) | Optional |
+| `Pillow` | BMP → PNG image conversion (render dependency) | Optional (outputs BMP without it) |
+
+---
+
+## Project Structure
+
+```
+ESPViewer2/
+├── esp_surface_gui.py          # ★ v2.0 main program (PyQt5, bilingual, full-featured)
+├── esp_surface_gui_fluent.py   # v2.0 Fluent UI style variant
+├── ESPViewer.py                # v1.x basic version (single-panel layout)
+├── ESPViewer_cn.py             # v1.x Chinese enhanced version
+├── ESPViewer_en.py             # v1.x English enhanced version
+├── ESPViewer.spec              # PyInstaller packaging config
+├── ESPViewer2.spec             # PyInstaller v2.0 packaging config
+├── ESPViewer-Fluent.spec       # PyInstaller Fluent packaging config
+├── espviewer.ico               # Application icon
+├── CITATION.cff                # Citation metadata
+├── README.md                   # This file
+├── references.ris              # EndNote-compatible citation file
+├── test_esp_area.csv           # Area distribution test data
+├── test_esp_area.png           # Area distribution test image
+├── esp_area_all.csv            # Area distribution sample data
+├── progress_bar_demo.py        # Progress bar demo
+└── 公众号推文_ESPViewer_v2.0.md # v2.0 release announcement
+```
+
+### Main Classes in esp_surface_gui.py
+
+| Class | Description |
+|-------|-------------|
+| `ESPSurfaceGUI` (QMainWindow) | Main window with tab switching (Analysis / Path Settings) |
+| `MultiwfnWorker` (QThread) | Background thread: runs Multiwfn computation + launches VMD |
+| `AreaAnalysisWorker` (QThread) | Background thread: ESP area distribution computation |
+| `AreaChartDialog` (QDialog) | Interactive matplotlib chart dialog |
+| `RenderViewWorker` (QThread) | Background thread: call external Tachyon to render current view |
+| `StatusButton` (QPushButton) | Capsule status button with breathing animation when running |
+
+### Key Functions
+
+| Function | Description |
+|----------|-------------|
+| `run_multiwfn()` | Call Multiwfn with command file redirection, real-time stdout reading |
+| `run_multiwfn_area_dist()` | Run ESP area distribution analysis |
+| `generate_vmd_script_pt/iso/ext/all()` | Generate VMD Tcl scripts for four modes |
+| `render_current_view_tachyon()` | Render current VMD view via Tachyon ray-tracing |
+| `send_vmd_cmd()` | Send Tcl commands to VMD via TCP socket |
+| `_parse_esp_range_from_stdout()` | Parse ESP extrema range from Multiwfn stdout |
+
+---
+
+## Workflow
+
+```
+                      ┌──────────────────────────┐
+                      │  1. Select .fch files     │
+                      │  2. Choose analysis mode  │
+                      │  3. Set color range/params│
+                      └─────────┬────────────────┘
+                                │
+              ┌─────────────────┼─────────────────┐
+              ▼                                    ▼
+   ┌──────────────────────┐           ┌──────────────────────┐
+   │  [Preview]            │           │  [One-Click Render]  │
+   │  Multiwfn computation │           │  Multiwfn computation│
+   │  → Generate VMD Tcl   │           │  → Generate VMD Tcl  │
+   │  → Launch VMD window  │           │  → VMD text mode     │
+   │  → TCP socket control │           │  → TachyonInternal   │
+   └──────────┬───────────┘           │  → Output TGA        │
+              │                       └──────────────────────┘
+              ▼
+   ┌──────────────────────┐
+   │  Interactive ops:     │
+   │  - Rotate/Zoom/Pan    │
+   │  - Color range adjust │
+   │  - Opacity adjust     │
+   │  - Extremum query     │
+   │  - [Render View]      │
+   └──────────────────────┘
+```
+
+---
+
+## Usage
+
+### Run from Source
+
+```bash
+# Install dependencies
+pip install PyQt5 matplotlib numpy pillow
+
+# Run v2.0 main program
+python esp_surface_gui.py
+```
+
+### Run v1.x from Source
+
+```bash
+python ESPViewer_cn.py    # Chinese version
+python ESPViewer_en.py    # English version
+```
+
+### Package as exe
+
+```bash
+pip install pyinstaller
+pyinstaller ESPViewer.spec    # v1.x packaging
+pyinstaller ESPViewer2.spec   # v2.0 packaging
+```
+
+### Download Pre-built Executable
+
+📦 Download pre-built exe from the Release page: [V2.0 Release](https://cnb.cool/chem311/ESPViewer/-/releases/tag/V2.0)
+
+- `ESPViewer_CN.exe` — Chinese enhanced version
+- `ESPViewer_EN.exe` — English enhanced version
+
+No Python installation required; download and run.
+
+---
+
+## Input / Output
+
+### Input Files
+
+Supports Gaussian formatted checkpoint files: `.fch` / `.fchk`
+
+### Output Files
+
+| File | Description |
+|------|-------------|
+| `*_esp.tga` / `*_esp.png` | Tachyon rendered image |
+| `*_esp_area.png` | ESP area distribution histogram |
+| `*_esp_area_data.txt` | Tab-separated area data (Origin/Excel importable) |
+
+---
+
+## Path Configuration
+
+On first run, configure the following paths:
+
+| Setting | Description | Example |
+|---------|-------------|---------|
+| Multiwfn | Path to Multiwfn.exe | `E:\Multiwfn_2026\Multiwfn.exe` |
+| VMD exe | Path to vmd.exe | `C:\Program Files\VMD\vmd.exe` |
+| VMD Dir | VMD working directory | `C:\Program Files\VMD` |
+| Tachyon | Path to tachyon_WIN32.exe | `C:\Program Files\VMD\tachyon_WIN32.exe` |
+
+Configuration is auto-saved to `esp_surface_gui.ini` next to the program.
+
+---
+
+## Acknowledgments
+
+The core computation engine of this software comes from **Multiwfn**, developed by **Prof. Tian Lu**. Our sincerest gratitude!
+
+> Tian Lu, Feiwu Chen, *Multiwfn: A Multifunctional Wavefunction Analyzer*, J. Comput. Chem., **2012**, 33, 580–592. DOI: [10.1002/jcc.22885](https://doi.org/10.1002/jcc.22885)
+>
+> Tian Lu, *A Comprehensive Electron Wavefunction Analysis Toolbox for Chemists, Multiwfn*, J. Chem. Phys., **2024**, 161, 082503. DOI: [10.1063/5.0216272](https://doi.org/10.1063/5.0216272) (JCP Editors' Choice 2024)
+
+Multiwfn has been cited in over 40,000 publications by users in 90+ countries.
+
+---
+
+## 📖 Cite
+
+If you use this software in your research, please cite it as follows:
+
+> Hou, C. (2026). *ESPViewer* (Version 1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.20791148
+
+```bibtex
+@software{espviewer_2026,
+  author       = {Hou, Cheng},
+  title        = {ESPViewer},
+  year         = 2026,
+  publisher    = {Zenodo},
+  version      = {1.0.0},
+  doi          = {10.5281/zenodo.20791148},
+  url          = {https://doi.org/10.5281/zenodo.20791148}
+}
+```
+
+---
+
+## License
+
+MIT License
+
+---
+
+---
+
+# ESPViewer v2.0（中文）
+
 基于 Multiwfn + VMD 的静电势（ESP）表面可视化工具，PyQt5 GUI 界面。
 
 📺 **视频演示**：[B站 BV1zSVW6PEwe](https://www.bilibili.com/video/BV1zSVW6PEwe/)
